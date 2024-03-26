@@ -1,0 +1,50 @@
+cmake_minimum_required(VERSION 3.1)
+
+# 指定库名和版本号
+project(ExtrinsicErrorTerm
+  VERSION 0.1
+  )
+
+# 使用现代 C++（C++ 11及以上）
+set(CMAKE_CXX_STANDARD 17)
+if(UNIX)
+  add_compile_options(-fPIC)
+endif()
+
+#boost
+find_package(Boost REQUIRED COMPONENTS
+        timer
+        filesystem)
+#PCL
+find_package(PCL REQUIRED)
+
+find_package(OpenCV REQUIRED)
+
+find_package(Eigen3 REQUIRED)
+
+
+# 头文件目录
+include_directories(
+  include
+  ${PCL_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+ 
+  )
+
+
+
+add_executable(${PROJECT_NAME}
+  test.cpp
+  src/ExtrinsicErrorTerm.cpp
+ )
+target_link_libraries(${PROJECT_NAME}
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        ${Boost_LIBRARIES}
+)
+
+
+
+
