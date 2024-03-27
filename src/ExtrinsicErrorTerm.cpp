@@ -5,6 +5,7 @@ ExtrinsicErrorTerm::ExtrinsicErrorTerm()
     _leftBackCloud.reset(new pcl::PointCloud<pcl::PointXYZI>);
     _CloudAll.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     _kdtreeFromLeftBack.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
+    _kdtreeFromLeftFront.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
 }
 ExtrinsicErrorTerm::~ExtrinsicErrorTerm()
 {
@@ -277,10 +278,8 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
     sonar_z = 0.0;
     sonar_x = length * cos(theta_rad);
     sonar_y = length * sin(theta_rad);
+    Eigen::Vector4d sonar_p(sonar_x, sonar_y, sonar_z, 1);
 
-    // sonar坐标系转base_link
-    float base_x = sonar_base_x + (sonar_x * cos(sonar_base_yaw) - sonar_y * sin(sonar_base_yaw));
-    float base_y = sonar_base_y + (sonar_x * sin(sonar_base_yaw) + sonar_y * cos(sonar_base_yaw));
     Eigen::Matrix4d T_wc = Eigen::Matrix4d::Identity();
     Eigen::Quaterniond cur_Q_ = Eigen::AngleAxisd(_Poses[indexPose][6], Eigen::Vector3d::UnitZ()) *
                                 Eigen::AngleAxisd(_Poses[indexPose][5], Eigen::Vector3d::UnitY()) *
@@ -288,9 +287,34 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
     cur_Q_.normalize();
     T_wc.block<3, 3>(0, 0) = cur_Q_.toRotationMatrix();
     T_wc.block<3, 1>(0, 3) = Eigen::Vector3d(_Poses[indexPose][1], _Poses[indexPose][2], _Poses[indexPose][3]);
-    Eigen::Vector4d p_ = Eigen::Vector4d(base_x, base_y, 0, 1);
-    Eigen::Vector4d p_w = T_wc * T_12 * p_;
-    Eigen::Vector3d p_w_3 = Eigen::Vector3d(p_w[0], p_w[1], p_w[2]);
+
+    Eigen::Vector3d p_w_3;
+
+    if (_leftBackBase)
+    {
+        Eigen::Matrix4d T_back_base;
+        T_back_base.setIdentity();
+        Eigen::Quaterniond q_back_base = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+                                         Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                         Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+        q_back_base.normalize();
+        T_back_base.block<3, 3>(0, 0) = q_back_base.toRotationMatrix();
+        T_back_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
+        Eigen::Matrix4d T_base_back = T_back_base.inverse();
+        Eigen::Matrix4d T_w_base = T_wc;
+        Eigen::Matrix4d T_w_back = T_w_base * T_base_back;
+        Eigen::Quaterniond q_w_back(T_w_back.block<3, 3>(0, 0));
+        Eigen::Vector3d t_w_back(T_w_back.block<3, 1>(0, 3));
+        Eigen::Vector4d p_w_4;
+        p_w_4 = T_w_back * T_12 * sonar_p;
+        p_w_3.x() = p_w_4.x();
+        p_w_3.y() = p_w_4.y();
+        p_w_3.z() = p_w_4.z();
+    }
+    else
+    {
+    }
+
     if (index == SonarIndex::left_front)
     {
         pcl::PointXYZI p;
@@ -399,9 +423,15 @@ void ExtrinsicErrorTerm::ceresAlign()
         std::vector<double> data = _SonarWaveDatas[i];
         double sonarTimeStamp = data[0] * 1e-6;
         int index = timeStampSynchronization(sonarTimeStamp);
-        Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud);
+        if (_leftBackBase)
+            Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud);
+        else
+            Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud);
     }
-    _kdtreeFromLeftBack->setInputCloud(_leftBackCloud);
+    if (_leftBackBase)
+        _kdtreeFromLeftBack->setInputCloud(_leftBackCloud);
+    else
+        _kdtreeFromLeftFront->setInputCloud(_leftFrontCloud);
     for (int num = 0; num < 5; num++)
     {
         ceres::Problem problem;
@@ -418,12 +448,22 @@ void ExtrinsicErrorTerm::ceresAlign()
 
             float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
             float length;
-
-            fov_rad = _leftFrontFovRad;
-            sonar_base_x = _leftFrontX;
-            sonar_base_y = _leftFronty;
-            sonar_base_yaw = _leftFrontyaw;
-            length = _SonarWaveDatas[i][1];
+            if (_leftBackBase)
+            {
+                fov_rad = _leftFrontFovRad;
+                sonar_base_x = _leftFrontX;
+                sonar_base_y = _leftFronty;
+                sonar_base_yaw = _leftFrontyaw;
+                length = _SonarWaveDatas[i][1];
+            }
+            else
+            {
+                fov_rad = _leftBackFovRad;
+                sonar_base_x = _leftBackX;
+                sonar_base_y = _leftBackY;
+                sonar_base_yaw = _leftBackYaw;
+                length = _SonarWaveDatas[i][2];
+            }
 
             float half_fov = fov_rad / 2.0;
             float theta_rad = 0.0 / 180.0 * M_PI;
@@ -451,18 +491,52 @@ void ExtrinsicErrorTerm::ceresAlign()
             pointSel.x = p_w_3[0];
             pointSel.y = p_w_3[1];
             pointSel.z = p_w_3[2];
-            _kdtreeFromLeftBack->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
-            if (pointSearchSqDis[0] > 0.1)
+
+            if (_leftBackBase)
             {
-                std::cout << "pointSearchSqDis[0]:" << pointSearchSqDis[0] << std::endl;
-                continue;
+                _kdtreeFromLeftBack->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
             }
-            ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
-                Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
-                Eigen::Vector3d(_leftBackCloud->points[pointSearchInd[0]].x, _leftBackCloud->points[pointSearchInd[0]].y, _leftBackCloud->points[pointSearchInd[0]].z),
-                cur_Q_,
-                Eigen::Vector3d(_Poses[index][1], _Poses[index][2], _Poses[index][3]));
-            problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+            else
+            {
+                _kdtreeFromLeftFront->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+            }
+
+            // if (pointSearchSqDis[0] > 0.1)
+            // {
+            //     std::cout << "pointSearchSqDis[0]:" << pointSearchSqDis[0] << std::endl;
+            //     continue;
+            // }
+            if (_leftBackBase)
+            {
+                Eigen::Matrix4d T_back_base;
+                T_back_base.setIdentity();
+                Eigen::Quaterniond q_back_base = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+                                                 Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                                 Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+                q_back_base.normalize();
+                T_back_base.block<3, 3>(0, 0) = q_back_base.toRotationMatrix();
+                T_back_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
+                Eigen::Matrix4d T_base_back = T_back_base.inverse();
+                Eigen::Matrix4d T_w_base = T_wc;
+                Eigen::Matrix4d T_w_back = T_w_base * T_base_back;
+                Eigen::Quaterniond q_w_back(T_w_back.block<3, 3>(0, 0));
+                Eigen::Vector3d t_w_back(T_w_back.block<3, 1>(0, 3));
+                ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
+                    Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                    Eigen::Vector3d(_leftBackCloud->points[pointSearchInd[0]].x, _leftBackCloud->points[pointSearchInd[0]].y, _leftBackCloud->points[pointSearchInd[0]].z),
+                    q_w_back,
+                    t_w_back);
+                problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+            }
+            else
+            {
+                ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
+                    Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                    Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
+                    cur_Q_,
+                    Eigen::Vector3d(_Poses[index][1], _Poses[index][2], _Poses[index][3]));
+                problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+            }
         }
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
@@ -495,7 +569,14 @@ void ExtrinsicErrorTerm::ceresAlign()
         std::vector<double> data = _SonarWaveDatas[i];
         double sonarTimeStamp = data[0] * 1e-6;
         int index = timeStampSynchronization(sonarTimeStamp);
-        Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud, R_result, t_result);
+        if (_leftBackBase)
+        {
+            Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud, R_result, t_result);
+        }
+        else
+        {
+            Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud, R_result, t_result);
+        }
     }
     _CloudAll->height = 1;
     _CloudAll->width = _CloudAll->points.size();

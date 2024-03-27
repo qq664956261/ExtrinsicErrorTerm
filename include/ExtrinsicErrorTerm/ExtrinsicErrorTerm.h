@@ -91,6 +91,8 @@ protected:
     pcl::PointCloud<pcl::PointXYZI>::Ptr _leftBackCloud;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr _CloudAll;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
+    pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
+    bool _leftBackBase {true};
 };
 
 #endif
