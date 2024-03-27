@@ -108,7 +108,10 @@ int ExtrinsicErrorTerm::buildMap()
     if (_leftBackCloud->points.size() != 0)
         pcl::io::savePCDFileASCII("leftBackCloud.pcd", *_leftBackCloud);
     if (_CloudAll->points.size() != 0)
+    {
         pcl::io::savePCDFileASCII("CloudAll.pcd", *_CloudAll);
+        pcl::io::savePLYFileBinary("CloudAll.ply", *_CloudAll);
+    }
 }
 
 int ExtrinsicErrorTerm::timeStampSynchronization(double sonarWaveTimeStamp)
@@ -330,6 +333,16 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
         p_w_3.x() = p_w_4.x();
         p_w_3.y() = p_w_4.y();
         p_w_3.z() = p_w_4.z();
+
+        Eigen::Matrix4d T_base_back = T_base_front * T_12;
+        Eigen::Matrix4d T_back_base = T_base_back.inverse();
+        Eigen::Vector3d ypr;
+        Eigen::Matrix3d R_back_base = T_back_base.block<3, 3>(0, 0);
+        ypr = R_back_base.eulerAngles(2, 1, 0);
+        Eigen::Vector3d t_back_base = T_back_base.block<3, 1>(0, 3);
+        // std::cout<<"R_back_base:"<<ypr<<std::endl;
+        // std::cout<<"t_back_base:"<<t_back_base<<std::endl;
+        // std::cout<<"R12:"<<R12<<std::endl;
     }
 
     if (index == SonarIndex::left_front)
@@ -424,6 +437,40 @@ void ExtrinsicErrorTerm::ceresAlign()
     temp_t.setZero();
     Eigen::Quaterniond temp_q;
     temp_q.setIdentity();
+    Eigen::Matrix4d T_back_base_temp;
+    T_back_base_temp.setIdentity();
+    Eigen::Matrix4d T_front_base_temp;
+    T_front_base_temp.setIdentity();
+    Eigen::Quaterniond q_back_base_temp = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+    q_back_base_temp.normalize();
+    T_back_base_temp.block<3, 3>(0, 0) = q_back_base_temp.toRotationMatrix();
+    T_back_base_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
+
+    Eigen::Quaterniond q_front_base_temp = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+    q_front_base_temp.normalize();
+    T_front_base_temp.block<3, 3>(0, 0) = q_front_base_temp.toRotationMatrix();
+    T_front_base_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+
+    if (_leftBackBase)
+    {
+        Eigen::Matrix4d T_back_front;
+        T_back_front = T_back_base_temp * T_front_base_temp.inverse();
+        Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
+        temp_q = q_back_front;
+        temp_t = T_back_front.block<3, 1>(0, 3);
+    }
+    else
+    {
+        Eigen::Matrix4d T_front_back;
+        T_front_back = T_front_base_temp * T_back_base_temp.inverse();
+        Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
+        temp_q = q_front_back;
+        temp_t = T_front_back.block<3, 1>(0, 3);
+    }
     double para_t[3];
     double para_q[4];
     para_t[0] = temp_t.x();
@@ -434,6 +481,9 @@ void ExtrinsicErrorTerm::ceresAlign()
     para_q[1] = temp_q.y();
     para_q[2] = temp_q.z();
     para_q[3] = temp_q.w();
+    std::cout << "para_t[0]:" << para_t[0] << std::endl;
+    std::cout << "para_t[1]:" << para_t[1] << std::endl;
+    std::cout << "para_t[2]:" << para_t[2] << std::endl;
 
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {
@@ -449,12 +499,14 @@ void ExtrinsicErrorTerm::ceresAlign()
         _kdtreeFromLeftBack->setInputCloud(_leftBackCloud);
     else
         _kdtreeFromLeftFront->setInputCloud(_leftFrontCloud);
-    for (int num = 0; num < 5; num++)
+    for (int num = 0; num < 1; num++)
     {
         ceres::Problem problem;
         ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
         problem.AddParameterBlock(para_q, 4, local_parameterization);
         problem.AddParameterBlock(para_t, 3);
+        //problem.SetParameterBlockConstant(para_q);
+        //problem.SetParameterBlockConstant(para_t);
         std::vector<int> pointSearchInd;
         std::vector<float> pointSearchSqDis;
         for (int i = 0; i < _SonarWaveDatas.size(); i++)
@@ -593,6 +645,7 @@ void ExtrinsicErrorTerm::ceresAlign()
     std::cout << "R_result:" << R_result << std::endl;
     std::cout << "ypr:" << ypr << std::endl;
     std::cout << "t_result:" << t_result << std::endl;
+    Eigen::AngleAxisd rotation_vector(R_result);
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {
         std::vector<double> data = _SonarWaveDatas[i];
@@ -610,5 +663,8 @@ void ExtrinsicErrorTerm::ceresAlign()
     _CloudAll->height = 1;
     _CloudAll->width = _CloudAll->points.size();
     if (_CloudAll->points.size() != 0)
+    {
         pcl::io::savePCDFileASCII("CloudAllceres.pcd", *_CloudAll);
+        pcl::io::savePLYFileBinary("CloudAllceres.ply", *_CloudAll);
+    }
 }

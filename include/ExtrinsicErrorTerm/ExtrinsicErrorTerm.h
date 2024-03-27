@@ -9,6 +9,7 @@
 #include <memory>
 #include <fstream>
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <omp.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
@@ -92,7 +93,7 @@ protected:
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr _CloudAll;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
-    bool _leftBackBase {true};
+    bool _leftBackBase {false};
 };
 
 #endif
