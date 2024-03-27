@@ -1,4 +1,4 @@
-#include"ExtrinsicErrorTerm/ExtrinsicErrorTerm.h"
+#include "ExtrinsicErrorTerm/ExtrinsicErrorTerm.h"
 
 int main()
 {
@@ -6,7 +6,16 @@ int main()
     pExtrinsicErrorTerm = std::shared_ptr<ExtrinsicErrorTerm>(new ExtrinsicErrorTerm());
     pExtrinsicErrorTerm->readPose(".");
     pExtrinsicErrorTerm->readSonarWaveData(".");
-    pExtrinsicErrorTerm->buildMap();
-    pExtrinsicErrorTerm->align();
+    bool useIcpAlign = false;
+    bool useCeresAlign = true;
+    if (useIcpAlign)
+    {
+        pExtrinsicErrorTerm->buildMap();
+        pExtrinsicErrorTerm->align();
+    }
+    else if (useCeresAlign)
+    {
+        pExtrinsicErrorTerm->ceresAlign();
+    }
     return 0;
 }

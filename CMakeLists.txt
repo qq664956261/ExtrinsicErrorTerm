@@ -22,6 +22,7 @@ find_package(OpenCV REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 
+find_package( Ceres REQUIRED )
 
 # 头文件目录
 include_directories(
@@ -30,6 +31,7 @@ include_directories(
   ${Boost_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+  ${CERES_INCLUDE_DIRS}
  
   )
 
@@ -43,6 +45,7 @@ target_link_libraries(${PROJECT_NAME}
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${Boost_LIBRARIES}
+        ${CERES_LIBRARIES}
 )
 
 

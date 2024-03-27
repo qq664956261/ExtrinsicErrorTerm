@@ -4,6 +4,7 @@ ExtrinsicErrorTerm::ExtrinsicErrorTerm()
     _leftFrontCloud.reset(new pcl::PointCloud<pcl::PointXYZI>);
     _leftBackCloud.reset(new pcl::PointCloud<pcl::PointXYZI>);
     _CloudAll.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+    _kdtreeFromLeftBack.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
 }
 ExtrinsicErrorTerm::~ExtrinsicErrorTerm()
 {
@@ -245,15 +246,96 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
     }
     return 1;
 }
+int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, Eigen::Matrix3d R12, Eigen::Vector3d t12)
+{
+    Eigen::Matrix4d T_12 = Eigen::Matrix4d::Identity();
+    T_12.block<3, 3>(0, 0) = R12;
+    T_12.block<3, 1>(0, 3) = t12;
+    float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
+    float length;
+    if (index == SonarIndex::left_front)
+    {
+        fov_rad = _leftFrontFovRad;
+        sonar_base_x = _leftFrontX;
+        sonar_base_y = _leftFronty;
+        sonar_base_yaw = _leftFrontyaw;
+        length = _SonarWaveDatas[indexSonar][1];
+    }
+    else if (index == SonarIndex::left_back)
+    {
+        fov_rad = _leftBackFovRad;
+        sonar_base_x = _leftBackX;
+        sonar_base_y = _leftBackY;
+        sonar_base_yaw = _leftBackYaw;
+        length = _SonarWaveDatas[indexSonar][2];
+    }
+    float half_fov = fov_rad / 2.0;
+    float theta_rad = 0.0 / 180.0 * M_PI;
+
+    // sonar坐标系的数据
+    float sonar_x, sonar_y, sonar_z;
+    sonar_z = 0.0;
+    sonar_x = length * cos(theta_rad);
+    sonar_y = length * sin(theta_rad);
+
+    // sonar坐标系转base_link
+    float base_x = sonar_base_x + (sonar_x * cos(sonar_base_yaw) - sonar_y * sin(sonar_base_yaw));
+    float base_y = sonar_base_y + (sonar_x * sin(sonar_base_yaw) + sonar_y * cos(sonar_base_yaw));
+    Eigen::Matrix4d T_wc = Eigen::Matrix4d::Identity();
+    Eigen::Quaterniond cur_Q_ = Eigen::AngleAxisd(_Poses[indexPose][6], Eigen::Vector3d::UnitZ()) *
+                                Eigen::AngleAxisd(_Poses[indexPose][5], Eigen::Vector3d::UnitY()) *
+                                Eigen::AngleAxisd(_Poses[indexPose][4], Eigen::Vector3d::UnitX());
+    cur_Q_.normalize();
+    T_wc.block<3, 3>(0, 0) = cur_Q_.toRotationMatrix();
+    T_wc.block<3, 1>(0, 3) = Eigen::Vector3d(_Poses[indexPose][1], _Poses[indexPose][2], _Poses[indexPose][3]);
+    Eigen::Vector4d p_ = Eigen::Vector4d(base_x, base_y, 0, 1);
+    Eigen::Vector4d p_w = T_wc * T_12 * p_;
+    Eigen::Vector3d p_w_3 = Eigen::Vector3d(p_w[0], p_w[1], p_w[2]);
+    if (index == SonarIndex::left_front)
+    {
+        pcl::PointXYZI p;
+        p.x = p_w_3[0];
+        p.y = p_w_3[1];
+        p.z = p_w_3[2];
+        p.intensity = 0;
+        cloud->points.push_back(p);
+        pcl::PointXYZRGB p_rgb;
+        p_rgb.x = p_w_3[0];
+        p_rgb.y = p_w_3[1];
+        p_rgb.z = p_w_3[2];
+        p_rgb.r = 255;
+        p_rgb.g = 0;
+        p_rgb.b = 0;
+        _CloudAll->points.push_back(p_rgb);
+    }
+    else if (index == SonarIndex::left_back)
+    {
+        pcl::PointXYZI p;
+        p.x = p_w_3[0];
+        p.y = p_w_3[1];
+        p.z = p_w_3[2];
+        p.intensity = 0;
+        cloud->points.push_back(p);
+        pcl::PointXYZRGB p_rgb;
+        p_rgb.x = p_w_3[0];
+        p_rgb.y = p_w_3[1];
+        p_rgb.z = p_w_3[2];
+        p_rgb.r = 0;
+        p_rgb.g = 255;
+        p_rgb.b = 0;
+        _CloudAll->points.push_back(p_rgb);
+    }
+    return 1;
+}
 
 void ExtrinsicErrorTerm::align()
 {
-    pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_out;
-    voxel_grid_out.setLeafSize(0.05, 0.05, 0.05);
-    voxel_grid_out.setInputCloud(_leftBackCloud);
-    voxel_grid_out.filter(*_leftBackCloud);
-    voxel_grid_out.setInputCloud(_leftFrontCloud);
-    voxel_grid_out.filter(*_leftFrontCloud);
+    // pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_out;
+    // voxel_grid_out.setLeafSize(0.05, 0.05, 0.05);
+    // voxel_grid_out.setInputCloud(_leftBackCloud);
+    // voxel_grid_out.filter(*_leftBackCloud);
+    // voxel_grid_out.setInputCloud(_leftFrontCloud);
+    // voxel_grid_out.filter(*_leftFrontCloud);
     pcl::PointCloud<pcl::PointXYZI>::Ptr output(new pcl::PointCloud<pcl::PointXYZI>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr result(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
@@ -292,4 +374,131 @@ void ExtrinsicErrorTerm::align()
     result->width = result->points.size();
     if (result->points.size() != 0)
         pcl::io::savePCDFileASCII("result.pcd", *result);
+}
+
+void ExtrinsicErrorTerm::ceresAlign()
+{
+
+    Eigen::Vector3d temp_t;
+    temp_t.setZero();
+    Eigen::Quaterniond temp_q;
+    temp_q.setIdentity();
+    double para_t[3];
+    double para_q[4];
+    para_t[0] = temp_t.x();
+    para_t[1] = temp_t.y();
+    para_t[2] = temp_t.z();
+
+    para_q[0] = temp_q.x();
+    para_q[1] = temp_q.y();
+    para_q[2] = temp_q.z();
+    para_q[3] = temp_q.w();
+
+    for (int i = 0; i < _SonarWaveDatas.size(); i++)
+    {
+        std::vector<double> data = _SonarWaveDatas[i];
+        double sonarTimeStamp = data[0] * 1e-6;
+        int index = timeStampSynchronization(sonarTimeStamp);
+        Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud);
+    }
+    _kdtreeFromLeftBack->setInputCloud(_leftBackCloud);
+    for (int num = 0; num < 5; num++)
+    {
+        ceres::Problem problem;
+        ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
+        problem.AddParameterBlock(para_q, 4, local_parameterization);
+        problem.AddParameterBlock(para_t, 3);
+        std::vector<int> pointSearchInd;
+        std::vector<float> pointSearchSqDis;
+        for (int i = 0; i < _SonarWaveDatas.size(); i++)
+        {
+            std::vector<double> data = _SonarWaveDatas[i];
+            double sonarTimeStamp = data[0] * 1e-6;
+            int index = timeStampSynchronization(sonarTimeStamp);
+
+            float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
+            float length;
+
+            fov_rad = _leftFrontFovRad;
+            sonar_base_x = _leftFrontX;
+            sonar_base_y = _leftFronty;
+            sonar_base_yaw = _leftFrontyaw;
+            length = _SonarWaveDatas[i][1];
+
+            float half_fov = fov_rad / 2.0;
+            float theta_rad = 0.0 / 180.0 * M_PI;
+
+            // sonar坐标系的数据
+            float sonar_x, sonar_y, sonar_z;
+            sonar_z = 0.0;
+            sonar_x = length * cos(theta_rad);
+            sonar_y = length * sin(theta_rad);
+
+            // sonar坐标系转base_link
+            float base_x = sonar_base_x + (sonar_x * cos(sonar_base_yaw) - sonar_y * sin(sonar_base_yaw));
+            float base_y = sonar_base_y + (sonar_x * sin(sonar_base_yaw) + sonar_y * cos(sonar_base_yaw));
+            Eigen::Matrix4d T_wc = Eigen::Matrix4d::Identity();
+            Eigen::Quaterniond cur_Q_ = Eigen::AngleAxisd(_Poses[index][6], Eigen::Vector3d::UnitZ()) *
+                                        Eigen::AngleAxisd(_Poses[index][5], Eigen::Vector3d::UnitY()) *
+                                        Eigen::AngleAxisd(_Poses[index][4], Eigen::Vector3d::UnitX());
+            cur_Q_.normalize();
+            T_wc.block<3, 3>(0, 0) = cur_Q_.toRotationMatrix();
+            T_wc.block<3, 1>(0, 3) = Eigen::Vector3d(_Poses[index][1], _Poses[index][2], _Poses[index][3]);
+            Eigen::Vector4d p_ = Eigen::Vector4d(base_x, base_y, 0, 1);
+            Eigen::Vector4d p_w = T_wc * p_;
+            Eigen::Vector3d p_w_3 = Eigen::Vector3d(p_w[0], p_w[1], p_w[2]);
+            pcl::PointXYZI pointSel;
+            pointSel.x = p_w_3[0];
+            pointSel.y = p_w_3[1];
+            pointSel.z = p_w_3[2];
+            _kdtreeFromLeftBack->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+            if (pointSearchSqDis[0] > 0.1)
+            {
+                std::cout << "pointSearchSqDis[0]:" << pointSearchSqDis[0] << std::endl;
+                continue;
+            }
+            ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
+                Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                Eigen::Vector3d(_leftBackCloud->points[pointSearchInd[0]].x, _leftBackCloud->points[pointSearchInd[0]].y, _leftBackCloud->points[pointSearchInd[0]].z),
+                cur_Q_,
+                Eigen::Vector3d(_Poses[index][1], _Poses[index][2], _Poses[index][3]));
+            problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+        }
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+        options.num_threads = 8;
+        options.minimizer_progress_to_stdout = true;
+        options.max_solver_time_in_seconds = 600;
+        options.max_num_iterations = 1000;
+        ceres::Solver::Summary summary;
+        ceres::Solve(options, &problem, &summary);
+        if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+        {
+            std::cout << " converge:" << summary.final_cost << std::endl;
+        }
+        else
+        {
+            std::cout << " not converge :" << summary.final_cost << std::endl;
+        }
+    }
+
+    Eigen::Quaterniond q_result(para_q[3], para_q[0], para_q[1], para_q[2]);
+    Eigen::Matrix3d R_result(q_result);
+    Eigen::Vector3d t_result(para_t[0], para_t[1], para_t[2]);
+    Eigen::Vector3d ypr;
+    ypr = R_result.eulerAngles(2, 1, 0);
+    std::cout << "R_result:" << R_result << std::endl;
+    std::cout << "ypr:" << ypr << std::endl;
+    std::cout << "t_result:" << t_result << std::endl;
+    for (int i = 0; i < _SonarWaveDatas.size(); i++)
+    {
+        std::vector<double> data = _SonarWaveDatas[i];
+        double sonarTimeStamp = data[0] * 1e-6;
+        int index = timeStampSynchronization(sonarTimeStamp);
+        Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud, R_result, t_result);
+    }
+    _CloudAll->height = 1;
+    _CloudAll->width = _CloudAll->points.size();
+    if (_CloudAll->points.size() != 0)
+        pcl::io::savePCDFileASCII("CloudAllceres.pcd", *_CloudAll);
 }

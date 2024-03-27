@@ -12,6 +12,11 @@
 #include <omp.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
+#include "Eigen/Core"
+#include "Eigen/Geometry"
+#include "ceres/ceres.h"
+#include "ceres/autodiff_cost_function.h"
+#include "ExtrinsicErrorTerm/lidarFactor.h"
 enum SonarIndex
 {
     left_front = 0,
@@ -62,7 +67,9 @@ public:
     int buildMap();
     int timeStampSynchronization(double sonarWaveTimeStamp);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
+    int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, Eigen::Matrix3d R12, Eigen::Vector3d t12);
     void align();
+    void ceresAlign();
     typedef std::shared_ptr<ExtrinsicErrorTerm> Ptr;
 
 protected:
@@ -83,6 +90,7 @@ protected:
     pcl::PointCloud<pcl::PointXYZI>::Ptr _leftFrontCloud;
     pcl::PointCloud<pcl::PointXYZI>::Ptr _leftBackCloud;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr _CloudAll;
+    pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
 };
 
 #endif
