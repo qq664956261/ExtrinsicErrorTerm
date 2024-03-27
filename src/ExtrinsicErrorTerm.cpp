@@ -313,6 +313,23 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
     }
     else
     {
+        Eigen::Matrix4d T_front_base;
+        T_front_base.setIdentity();
+        Eigen::Quaterniond q_front_base = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+        T_front_base.block<3, 3>(0, 0) = q_front_base.toRotationMatrix();
+        T_front_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+        Eigen::Matrix4d T_base_front = T_front_base.inverse();
+        Eigen::Matrix4d T_w_base = T_wc;
+        Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
+        Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
+        Eigen::Vector3d t_w_front(T_w_front.block<3, 1>(0, 3));
+        Eigen::Vector4d p_w_4;
+        p_w_4 = T_w_front * T_12 * sonar_p;
+        p_w_3.x() = p_w_4.x();
+        p_w_3.y() = p_w_4.y();
+        p_w_3.z() = p_w_4.z();
     }
 
     if (index == SonarIndex::left_front)
@@ -530,11 +547,23 @@ void ExtrinsicErrorTerm::ceresAlign()
             }
             else
             {
+                Eigen::Matrix4d T_front_base;
+                T_front_base.setIdentity();
+                Eigen::Quaterniond q_front_base = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+                                                  Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                                  Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+                T_front_base.block<3, 3>(0, 0) = q_front_base.toRotationMatrix();
+                T_front_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+                Eigen::Matrix4d T_base_front = T_front_base.inverse();
+                Eigen::Matrix4d T_w_base = T_wc;
+                Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
+                Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
+                Eigen::Vector3d t_w_front(T_w_front.block<3, 1>(0, 3));
                 ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
                     Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
                     Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
-                    cur_Q_,
-                    Eigen::Vector3d(_Poses[index][1], _Poses[index][2], _Poses[index][3]));
+                    q_w_front,
+                    t_w_front);
                 problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
             }
         }
