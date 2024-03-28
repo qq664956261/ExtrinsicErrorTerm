@@ -295,15 +295,15 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
 
     if (_leftBackBase)
     {
-        Eigen::Matrix4d T_back_base;
-        T_back_base.setIdentity();
-        Eigen::Quaterniond q_back_base = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::Matrix4d T_base_back;
+        T_base_back.setIdentity();
+        Eigen::Quaterniond q_base_back = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                          Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-        q_back_base.normalize();
-        T_back_base.block<3, 3>(0, 0) = q_back_base.toRotationMatrix();
-        T_back_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
-        Eigen::Matrix4d T_base_back = T_back_base.inverse();
+        q_base_back.normalize();
+        T_base_back.block<3, 3>(0, 0) = q_base_back.toRotationMatrix();
+        T_base_back.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
+   
         Eigen::Matrix4d T_w_base = T_wc;
         Eigen::Matrix4d T_w_back = T_w_base * T_base_back;
         Eigen::Quaterniond q_w_back(T_w_back.block<3, 3>(0, 0));
@@ -316,14 +316,14 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
     }
     else
     {
-        Eigen::Matrix4d T_front_base;
-        T_front_base.setIdentity();
-        Eigen::Quaterniond q_front_base = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::Matrix4d T_base_front;
+        T_base_front.setIdentity();
+        Eigen::Quaterniond q_base_front = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-        T_front_base.block<3, 3>(0, 0) = q_front_base.toRotationMatrix();
-        T_front_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
-        Eigen::Matrix4d T_base_front = T_front_base.inverse();
+        T_base_front.block<3, 3>(0, 0) = q_base_front.toRotationMatrix();
+        T_base_front.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+    
         Eigen::Matrix4d T_w_base = T_wc;
         Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
         Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
@@ -437,28 +437,28 @@ void ExtrinsicErrorTerm::ceresAlign()
     temp_t.setZero();
     Eigen::Quaterniond temp_q;
     temp_q.setIdentity();
-    Eigen::Matrix4d T_back_base_temp;
-    T_back_base_temp.setIdentity();
-    Eigen::Matrix4d T_front_base_temp;
-    T_front_base_temp.setIdentity();
-    Eigen::Quaterniond q_back_base_temp = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+    Eigen::Matrix4d T_base_back_temp;
+    T_base_back_temp.setIdentity();
+    Eigen::Matrix4d T_base_front_temp;
+    T_base_front_temp.setIdentity();
+    Eigen::Quaterniond q_baes_back_temp = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-    q_back_base_temp.normalize();
-    T_back_base_temp.block<3, 3>(0, 0) = q_back_base_temp.toRotationMatrix();
-    T_back_base_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
+    q_baes_back_temp.normalize();
+    T_base_back_temp.block<3, 3>(0, 0) = q_baes_back_temp.toRotationMatrix();
+    T_base_back_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
 
-    Eigen::Quaterniond q_front_base_temp = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+    Eigen::Quaterniond q_base_front_temp = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
                                            Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                            Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-    q_front_base_temp.normalize();
-    T_front_base_temp.block<3, 3>(0, 0) = q_front_base_temp.toRotationMatrix();
-    T_front_base_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+    q_base_front_temp.normalize();
+    T_base_front_temp.block<3, 3>(0, 0) = q_base_front_temp.toRotationMatrix();
+    T_base_front_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
 
     if (_leftBackBase)
     {
         Eigen::Matrix4d T_back_front;
-        T_back_front = T_back_base_temp * T_front_base_temp.inverse();
+        T_back_front = T_base_back_temp.inverse() * T_base_front_temp;
         Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
         temp_q = q_back_front;
         temp_t = T_back_front.block<3, 1>(0, 3);
@@ -467,7 +467,7 @@ void ExtrinsicErrorTerm::ceresAlign()
     else
     {
         Eigen::Matrix4d T_front_back;
-        T_front_back = T_front_base_temp * T_back_base_temp.inverse();
+        T_front_back = T_base_front_temp.inverse() * T_base_back_temp.inverse();
         Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
         temp_q = q_front_back;
         temp_t = T_front_back.block<3, 1>(0, 3);
@@ -524,18 +524,18 @@ void ExtrinsicErrorTerm::ceresAlign()
         {
             problem.AddParameterBlock(para_q, 4, local_parameterization);
             problem.AddParameterBlock(para_t, 3);
-            problem.SetParameterLowerBound(para_t, 0, 0.29);
-            problem.SetParameterUpperBound(para_t, 0, 0.3);
-            problem.SetParameterLowerBound(para_t, 1, -0.04);
-            problem.SetParameterUpperBound(para_t, 1, -0.03);
-            problem.SetParameterLowerBound(para_q, 0, -0.0001);
-            problem.SetParameterUpperBound(para_q, 0, 0.0001);
-            problem.SetParameterLowerBound(para_q, 1, -0.0001);
-            problem.SetParameterUpperBound(para_q, 1, 0.0001);
-            problem.SetParameterLowerBound(para_q, 2, -0.07);
-            problem.SetParameterUpperBound(para_q, 2, -0.06);
-            problem.SetParameterLowerBound(para_q, 3, 0.999);
-            problem.SetParameterUpperBound(para_q, 3, 1);
+            // problem.SetParameterLowerBound(para_t, 0, 0.29);
+            // problem.SetParameterUpperBound(para_t, 0, 0.3);
+            // problem.SetParameterLowerBound(para_t, 1, -0.04);
+            // problem.SetParameterUpperBound(para_t, 1, -0.03);
+            // problem.SetParameterLowerBound(para_q, 0, -0.0001);
+            // problem.SetParameterUpperBound(para_q, 0, 0.0001);
+            // problem.SetParameterLowerBound(para_q, 1, -0.0001);
+            // problem.SetParameterUpperBound(para_q, 1, 0.0001);
+            // problem.SetParameterLowerBound(para_q, 2, -0.07);
+            // problem.SetParameterUpperBound(para_q, 2, -0.06);
+            // problem.SetParameterLowerBound(para_q, 3, 0.999);
+            // problem.SetParameterUpperBound(para_q, 3, 1);
         }
         else
         {
@@ -614,15 +614,14 @@ void ExtrinsicErrorTerm::ceresAlign()
             if (_leftBackBase)
             {
                 ceres::LossFunction *loss_function = new ceres::HuberLoss(10);
-                Eigen::Matrix4d T_back_base;
-                T_back_base.setIdentity();
-                Eigen::Quaterniond q_back_base = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
+                Eigen::Matrix4d T_base_back;
+                T_base_back.setIdentity();
+                Eigen::Quaterniond q_base_back = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
                                                  Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                                  Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-                q_back_base.normalize();
-                T_back_base.block<3, 3>(0, 0) = q_back_base.toRotationMatrix();
-                T_back_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
-                Eigen::Matrix4d T_base_back = T_back_base.inverse();
+                q_base_back.normalize();
+                T_base_back.block<3, 3>(0, 0) = q_base_back.toRotationMatrix();
+                T_base_back.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
                 Eigen::Matrix4d T_w_base = T_wc;
                 Eigen::Matrix4d T_w_back = T_w_base * T_base_back;
                 Eigen::Quaterniond q_w_back(T_w_back.block<3, 3>(0, 0));
@@ -636,14 +635,14 @@ void ExtrinsicErrorTerm::ceresAlign()
             }
             else
             {
-                Eigen::Matrix4d T_front_base;
-                T_front_base.setIdentity();
-                Eigen::Quaterniond q_front_base = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+                Eigen::Matrix4d T_base_front;
+                T_base_front.setIdentity();
+                Eigen::Quaterniond q_base_front = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
                                                   Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
                                                   Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
-                T_front_base.block<3, 3>(0, 0) = q_front_base.toRotationMatrix();
-                T_front_base.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
-                Eigen::Matrix4d T_base_front = T_front_base.inverse();
+                T_base_front.block<3, 3>(0, 0) = q_base_front.toRotationMatrix();
+                T_base_front.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+  
                 Eigen::Matrix4d T_w_base = T_wc;
                 Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
                 Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
