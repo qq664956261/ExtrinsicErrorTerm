@@ -335,13 +335,12 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
         p_w_3.z() = p_w_4.z();
 
         Eigen::Matrix4d T_base_back = T_base_front * T_12;
-        Eigen::Matrix4d T_back_base = T_base_back.inverse();
         Eigen::Vector3d ypr;
-        Eigen::Matrix3d R_back_base = T_back_base.block<3, 3>(0, 0);
-        ypr = R_back_base.eulerAngles(2, 1, 0);
-        Eigen::Vector3d t_back_base = T_back_base.block<3, 1>(0, 3);
-        // std::cout<<"R_back_base:"<<ypr<<std::endl;
-        // std::cout<<"t_back_base:"<<t_back_base<<std::endl;
+        Eigen::Matrix3d R_base_back = T_base_back.block<3, 3>(0, 0);
+        ypr = R_base_back.eulerAngles(2, 1, 0);
+        Eigen::Vector3d t_base_back = T_base_back.block<3, 1>(0, 3);
+        // std::cout<<"R_base_back:"<<ypr<<std::endl;
+        // std::cout<<"t_base_back:"<<t_base_back<<std::endl;
         // std::cout<<"R12:"<<R12<<std::endl;
     }
 
@@ -455,24 +454,24 @@ void ExtrinsicErrorTerm::ceresAlign()
     T_base_front_temp.block<3, 3>(0, 0) = q_base_front_temp.toRotationMatrix();
     T_base_front_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
 
-    if (_leftBackBase)
-    {
-        Eigen::Matrix4d T_back_front;
-        T_back_front = T_base_back_temp.inverse() * T_base_front_temp;
-        Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
-        temp_q = q_back_front;
-        temp_t = T_back_front.block<3, 1>(0, 3);
-        std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 3>(0, 0) << std::endl;
-    }
-    else
-    {
-        Eigen::Matrix4d T_front_back;
-        T_front_back = T_base_front_temp.inverse() * T_base_back_temp.inverse();
-        Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
-        temp_q = q_front_back;
-        temp_t = T_front_back.block<3, 1>(0, 3);
-        std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 3>(0, 0) << std::endl;
-    }
+    // if (_leftBackBase)
+    // {
+    //     Eigen::Matrix4d T_back_front;
+    //     T_back_front = T_base_back_temp.inverse() * T_base_front_temp;
+    //     Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
+    //     temp_q = q_back_front;
+    //     temp_t = T_back_front.block<3, 1>(0, 3);
+    //     std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 3>(0, 0) << std::endl;
+    // }
+    // else
+    // {
+    //     Eigen::Matrix4d T_front_back;
+    //     T_front_back = T_base_front_temp.inverse() * T_base_back_temp.inverse();
+    //     Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
+    //     temp_q = q_front_back;
+    //     temp_t = T_front_back.block<3, 1>(0, 3);
+    //     std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 3>(0, 0) << std::endl;
+    // }
     double para_t[3];
     double para_q[4];
     double se3[6];

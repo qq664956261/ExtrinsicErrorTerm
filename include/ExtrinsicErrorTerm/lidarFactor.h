@@ -82,7 +82,7 @@ public:
 		Eigen::Matrix<double, 3, 1> pc;
 		// pc = q_corrected * q_12 * pa + q_corrected * t_12 + t_corrected;
 		pc = T_corrected * T12 * pa;
-		std::cout<<"pc:"<<pc<<std::endl;
+		
 		residuals[0] = pc.x() - pb.x();
 		residuals[1] = pc.y() - pb.y();
 		residuals[2] = pc.z() - pb.z();
