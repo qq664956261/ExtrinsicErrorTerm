@@ -35,7 +35,7 @@ int ExtrinsicErrorTerm::readPose(const std::string filepath)
             ss >> temp_data;
             data.push_back(temp_data);
         }
-        // if (_Poses.size() > 2000)
+        // if (_Poses.size() > 1000)
         //     continue;
         _Poses.push_back(data);
         std::pair<int, double> tmp_pair;
@@ -70,7 +70,7 @@ int ExtrinsicErrorTerm::readSonarWaveData(const std::string filepath)
             ss >> temp_data;
             data.push_back(temp_data);
         }
-        // if (_SonarWaveDatas.size() > 2000)
+        // if (_SonarWaveDatas.size() > 1000)
         //     continue;
         _SonarWaveDatas.push_back(data);
         std::pair<int, double> tmp_pair;
@@ -462,6 +462,7 @@ void ExtrinsicErrorTerm::ceresAlign()
         Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
         temp_q = q_back_front;
         temp_t = T_back_front.block<3, 1>(0, 3);
+        std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 3>(0, 0) << std::endl;
     }
     else
     {
@@ -470,9 +471,11 @@ void ExtrinsicErrorTerm::ceresAlign()
         Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
         temp_q = q_front_back;
         temp_t = T_front_back.block<3, 1>(0, 3);
+        std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 3>(0, 0) << std::endl;
     }
     double para_t[3];
     double para_q[4];
+    double se3[6];
     para_t[0] = temp_t.x();
     para_t[1] = temp_t.y();
     para_t[2] = temp_t.z();
@@ -481,6 +484,19 @@ void ExtrinsicErrorTerm::ceresAlign()
     para_q[1] = temp_q.y();
     para_q[2] = temp_q.z();
     para_q[3] = temp_q.w();
+    Sophus::SE3 SE3_T(temp_q, temp_t);
+    Eigen::Matrix<double, 6, 1> se3_T = SE3_T.log();
+    se3[0] = se3_T[0];
+    se3[1] = se3_T[1];
+    se3[2] = se3_T[2];
+    se3[3] = se3_T[3];
+    se3[4] = se3_T[4];
+    se3[5] = se3_T[5];
+    std::cout << "se3_T:" << se3_T << std::endl;
+    std::cout << "para_q[0]:" << para_q[0] << std::endl;
+    std::cout << "para_q[1]:" << para_q[1] << std::endl;
+    std::cout << "para_q[2]:" << para_q[2] << std::endl;
+    std::cout << "para_q[3]:" << para_q[3] << std::endl;
     std::cout << "para_t[0]:" << para_t[0] << std::endl;
     std::cout << "para_t[1]:" << para_t[1] << std::endl;
     std::cout << "para_t[2]:" << para_t[2] << std::endl;
@@ -503,10 +519,30 @@ void ExtrinsicErrorTerm::ceresAlign()
     {
         ceres::Problem problem;
         ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
-        problem.AddParameterBlock(para_q, 4, local_parameterization);
-        problem.AddParameterBlock(para_t, 3);
-        //problem.SetParameterBlockConstant(para_q);
-        //problem.SetParameterBlockConstant(para_t);
+        ceres::LocalParameterization *local_param = new SE3Param();
+        if (_useAutoDiff)
+        {
+            problem.AddParameterBlock(para_q, 4, local_parameterization);
+            problem.AddParameterBlock(para_t, 3);
+            problem.SetParameterLowerBound(para_t, 0, 0.29);
+            problem.SetParameterUpperBound(para_t, 0, 0.3);
+            problem.SetParameterLowerBound(para_t, 1, -0.04);
+            problem.SetParameterUpperBound(para_t, 1, -0.03);
+            problem.SetParameterLowerBound(para_q, 0, -0.0001);
+            problem.SetParameterUpperBound(para_q, 0, 0.0001);
+            problem.SetParameterLowerBound(para_q, 1, -0.0001);
+            problem.SetParameterUpperBound(para_q, 1, 0.0001);
+            problem.SetParameterLowerBound(para_q, 2, -0.07);
+            problem.SetParameterUpperBound(para_q, 2, -0.06);
+            problem.SetParameterLowerBound(para_q, 3, 0.999);
+            problem.SetParameterUpperBound(para_q, 3, 1);
+        }
+        else
+        {
+            problem.AddParameterBlock(se3, 6, local_param);
+        }
+        // problem.SetParameterBlockConstant(para_q);
+        // problem.SetParameterBlockConstant(para_t);
         std::vector<int> pointSearchInd;
         std::vector<float> pointSearchSqDis;
         for (int i = 0; i < _SonarWaveDatas.size(); i++)
@@ -570,13 +606,14 @@ void ExtrinsicErrorTerm::ceresAlign()
                 _kdtreeFromLeftFront->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
             }
 
-            // if (pointSearchSqDis[0] > 0.1)
+            // if (pointSearchSqDis[0] > 0.01)
             // {
             //     std::cout << "pointSearchSqDis[0]:" << pointSearchSqDis[0] << std::endl;
             //     continue;
             // }
             if (_leftBackBase)
             {
+                ceres::LossFunction *loss_function = new ceres::HuberLoss(10);
                 Eigen::Matrix4d T_back_base;
                 T_back_base.setIdentity();
                 Eigen::Quaterniond q_back_base = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
@@ -611,12 +648,25 @@ void ExtrinsicErrorTerm::ceresAlign()
                 Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
                 Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
                 Eigen::Vector3d t_w_front(T_w_front.block<3, 1>(0, 3));
-                ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
-                    Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
-                    Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
-                    q_w_front,
-                    t_w_front);
-                problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+                if (_useAutoDiff)
+                {
+                    ceres::LossFunction *loss_function = new ceres::HuberLoss(10);
+
+                    ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
+                        Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                        Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
+                        q_w_front,
+                        t_w_front);
+                    problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+                }
+                else
+                {
+                    sonarFactor *cost_function = new sonarFactor(Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                                                                 Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
+                                                                 q_w_front,
+                                                                 t_w_front);
+                    problem.AddResidualBlock(cost_function, NULL, se3);
+                }
             }
         }
         ceres::Solver::Options options;
@@ -625,6 +675,7 @@ void ExtrinsicErrorTerm::ceresAlign()
         options.minimizer_progress_to_stdout = true;
         options.max_solver_time_in_seconds = 600;
         options.max_num_iterations = 1000;
+
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
         if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
@@ -636,15 +687,39 @@ void ExtrinsicErrorTerm::ceresAlign()
             std::cout << " not converge :" << summary.final_cost << std::endl;
         }
     }
+    Eigen::Quaterniond q_result;
+    Eigen::Matrix3d R_result;
+    Eigen::Vector3d t_result;
+    if (!_useAutoDiff)
+    {
+        Eigen::Matrix<double, 6, 1> vresult;
+        vresult << se3[0], se3[1], se3[2], se3[3], se3[4], se3[5];
+        Sophus::SE3 T_result = Sophus::SE3::exp(vresult);
+        Eigen::Matrix<double, 7, 1> pose_result;
+        pose_result.block<3, 1>(0, 0) = T_result.translation();
+        pose_result.block<4, 1>(3, 0) = T_result.unit_quaternion().coeffs();
+        std::cout << "pose_result:" << pose_result << std::endl;
 
-    Eigen::Quaterniond q_result(para_q[3], para_q[0], para_q[1], para_q[2]);
-    Eigen::Matrix3d R_result(q_result);
-    Eigen::Vector3d t_result(para_t[0], para_t[1], para_t[2]);
+        Eigen::Quaterniond q_result_temp(pose_result[6], pose_result[3], pose_result[4], pose_result[5]);
+        R_result = q_result_temp.toRotationMatrix();
+        t_result = T_result.translation();
+    }
+    else
+    {
+        Eigen::Quaterniond q_result_temp(para_q[3], para_q[0], para_q[1], para_q[2]);
+        R_result = q_result_temp.toRotationMatrix();
+        Eigen::Vector3d t_result_temp(para_t[0], para_t[1], para_t[2]);
+        t_result = t_result_temp;
+    }
     Eigen::Vector3d ypr;
     ypr = R_result.eulerAngles(2, 1, 0);
     std::cout << "R_result:" << R_result << std::endl;
     std::cout << "ypr:" << ypr << std::endl;
     std::cout << "t_result:" << t_result << std::endl;
+    std::cout << "para_q[0]:" << para_q[0] << std::endl;
+    std::cout << "para_q[1]:" << para_q[1] << std::endl;
+    std::cout << "para_q[2]:" << para_q[2] << std::endl;
+    std::cout << "para_q[3]:" << para_q[3] << std::endl;
     Eigen::AngleAxisd rotation_vector(R_result);
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {

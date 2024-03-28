@@ -94,6 +94,7 @@ protected:
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
     bool _leftBackBase {false};
+    bool _useAutoDiff{true};
 };
 
 #endif

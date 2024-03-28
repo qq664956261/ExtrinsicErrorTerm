@@ -24,6 +24,8 @@ find_package(Eigen3 REQUIRED)
 
 find_package( Ceres REQUIRED )
 
+find_package( Sophus REQUIRED )
+
 # 头文件目录
 include_directories(
   include
@@ -32,6 +34,7 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
+  ${Sophus_INCLUDE_DIRS}
  
   )
 
@@ -46,6 +49,7 @@ target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBRARIES}
         ${Boost_LIBRARIES}
         ${CERES_LIBRARIES}
+        ${Sophus_LIBRARIES}
 )
 
 
