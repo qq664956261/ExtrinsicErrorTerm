@@ -18,6 +18,8 @@
 #include "ceres/ceres.h"
 #include "ceres/autodiff_cost_function.h"
 #include "ExtrinsicErrorTerm/lidarFactor.h"
+#include "ExtrinsicErrorTerm/aloam_analytic_factor.h"
+
 enum SonarIndex
 {
     left_front = 0,
@@ -95,6 +97,7 @@ protected:
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
     bool _leftBackBase {false};
     bool _useAutoDiff{false};
+    bool _usePlaneConstraints{false};
 };
 
 #endif

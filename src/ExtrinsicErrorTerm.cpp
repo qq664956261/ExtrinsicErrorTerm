@@ -146,12 +146,15 @@ int ExtrinsicErrorTerm::timeStampSynchronization(double sonarWaveTimeStamp)
         {
             if ((_PoseTimeStamp.at(index_r).second * 1e-6 - sonarWaveTimeStamp) >= (sonarWaveTimeStamp - _PoseTimeStamp.at(index_l).second * 1e-6))
             {
-
+                std::cout<<"_PoseTimeStamp.at(index_r).second * 1e-6 - sonarWaveTimeStamp"<<_PoseTimeStamp.at(index_r).second * 1e-6 - sonarWaveTimeStamp<<std::endl;
+                std::cout<<"sonarWaveTimeStamp - _PoseTimeStamp.at(index_l).second * 1e-6"<<sonarWaveTimeStamp - _PoseTimeStamp.at(index_l).second * 1e-6<<std::endl;
                 index = index_l;
                 break;
             }
             else
             {
+                std::cout<<"_PoseTimeStamp.at(index_r).second * 1e-6 - sonarWaveTimeStamp"<<_PoseTimeStamp.at(index_r).second * 1e-6 - sonarWaveTimeStamp<<std::endl;
+                std::cout<<"sonarWaveTimeStamp - _PoseTimeStamp.at(index_l).second * 1e-6"<<sonarWaveTimeStamp - _PoseTimeStamp.at(index_l).second * 1e-6<<std::endl;
 
                 index = index_r;
                 break;
@@ -339,9 +342,9 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
         Eigen::Matrix3d R_base_back = T_base_back.block<3, 3>(0, 0);
         ypr = R_base_back.eulerAngles(2, 1, 0);
         Eigen::Vector3d t_base_back = T_base_back.block<3, 1>(0, 3);
-        // std::cout<<"R_base_back:"<<ypr<<std::endl;
-        // std::cout<<"t_base_back:"<<t_base_back<<std::endl;
-        // std::cout<<"R12:"<<R12<<std::endl;
+        //  std::cout<<"R_base_back:"<<ypr<<std::endl;
+        //  std::cout<<"t_base_back:"<<t_base_back<<std::endl;
+        //  std::cout<<"R12:"<<R12<<std::endl;
     }
 
     if (index == SonarIndex::left_front)
@@ -461,8 +464,8 @@ void ExtrinsicErrorTerm::ceresAlign()
     if (_leftBackBase)
     {
         Eigen::Matrix4d T_back_front;
-        //T_back_front = T_base_front_temp * T_base_back_temp.inverse();//实际的T_back_front
-        T_back_front = T_base_back_temp.inverse() * T_base_front_temp;//代码里定义的T_front_back
+        // T_back_front = T_base_front_temp * T_base_back_temp.inverse();//实际的T_back_front
+        T_back_front = T_base_back_temp.inverse() * T_base_front_temp; // 代码里定义的T_front_back
         Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
         temp_q = q_back_front;
         temp_t = T_back_front.block<3, 1>(0, 3);
@@ -472,8 +475,8 @@ void ExtrinsicErrorTerm::ceresAlign()
     else
     {
         Eigen::Matrix4d T_front_back;
-        //T_front_back = T_base_back_temp * T_base_front_temp.inverse();//实际的T_front_back
-        T_front_back = T_base_front_temp.inverse() * T_base_back_temp;//代码里定义的T_front_back
+        // T_front_back = T_base_back_temp * T_base_front_temp.inverse();//实际的T_front_back
+        T_front_back = T_base_front_temp.inverse() * T_base_back_temp; // 代码里定义的T_front_back
         Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
         temp_q = q_front_back;
         temp_t = T_front_back.block<3, 1>(0, 3);
@@ -527,6 +530,7 @@ void ExtrinsicErrorTerm::ceresAlign()
         ceres::Problem problem;
         ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
         ceres::LocalParameterization *local_param = new SE3Param();
+        ceres::LocalParameterization *local_paramso3 =  new  PoseSO3Parameterization() ;    
         if (_useAutoDiff)
         {
             problem.AddParameterBlock(para_q, 4, local_parameterization);
@@ -546,10 +550,18 @@ void ExtrinsicErrorTerm::ceresAlign()
         }
         else
         {
-            problem.AddParameterBlock(se3, 6, local_param);
+            if (_usePlaneConstraints)
+            {
+                problem.AddParameterBlock(para_q, 4, local_paramso3);
+                problem.AddParameterBlock(para_t, 3);
+            }
+            else
+            {
+                problem.AddParameterBlock(se3, 6, local_param);
+            }
         }
-         //problem.SetParameterBlockConstant(para_q);
-         //problem.SetParameterBlockConstant(para_t);
+        // problem.SetParameterBlockConstant(para_q);
+        // problem.SetParameterBlockConstant(para_t);
         std::vector<int> pointSearchInd;
         std::vector<float> pointSearchSqDis;
         for (int i = 0; i < _SonarWaveDatas.size(); i++)
@@ -667,88 +679,145 @@ void ExtrinsicErrorTerm::ceresAlign()
                 }
                 else
                 {
-                    sonarFactor *cost_function = new sonarFactor(Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
-                                                                 Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
-                                                                 q_w_front,
-                                                                 t_w_front);
-                    problem.AddResidualBlock(cost_function, NULL, se3);
+                    if (_usePlaneConstraints)
+                    {
+                        Eigen::Matrix<double, 5, 3> matA0;
+                        Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
+                        if (pointSearchSqDis[4] < 1.0)
+                        {
+
+                            for (int j = 0; j < 5; j++)
+                            {
+                                matA0(j, 0) = _leftFrontCloud->points[pointSearchInd[j]].x;
+                                matA0(j, 1) = _leftFrontCloud->points[pointSearchInd[j]].y;
+                                matA0(j, 2) = _leftFrontCloud->points[pointSearchInd[j]].z;
+                                // printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
+                            }
+                            // find the norm of plane
+                            Eigen::Vector3d norm = matA0.colPivHouseholderQr().solve(matB0);
+                            double negative_OA_dot_norm = 1 / norm.norm();
+                            norm.normalize();
+
+                            // Here n(pa, pb, pc) is unit norm of plane
+                            bool planeValid = true;
+                            for (int j = 0; j < 5; j++)
+                            {
+                                // if OX * n > 0.2, then plane is not fit well
+                                if (fabs(norm(0) * _leftFrontCloud->points[pointSearchInd[j]].x +
+                                         norm(1) * _leftFrontCloud->points[pointSearchInd[j]].y +
+                                         norm(2) * _leftFrontCloud->points[pointSearchInd[j]].z + negative_OA_dot_norm) > 0.2)
+                                {
+                                    planeValid = false;
+                                    break;
+                                }
+                            }
+                            Eigen::Vector3d curr_point(sonar_x, sonar_y, sonar_z);
+                            Eigen::Vector3d target_x(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z);
+                            Eigen::Vector3d target_y(_leftFrontCloud->points[pointSearchInd[1]].x, _leftFrontCloud->points[pointSearchInd[1]].y, _leftFrontCloud->points[pointSearchInd[1]].z);
+                            Eigen::Vector3d target_z(_leftFrontCloud->points[pointSearchInd[2]].x, _leftFrontCloud->points[pointSearchInd[2]].y, _leftFrontCloud->points[pointSearchInd[2]].z);
+                            if (planeValid)
+                            {
+                                ceres::CostFunction *factor_analytic_plane = new PlaneAnalyticCostFunction(
+                                    curr_point,
+                                    target_x, target_y, target_z,
+                                    0,
+                                    q_w_front,
+                                    t_w_front);
+                                problem.AddResidualBlock(
+                                    factor_analytic_plane,
+                                    NULL,
+                                    para_q, para_t);
+                            }
+                        }
+                    }
+                        else
+                        {
+                            sonarFactor *cost_function = new sonarFactor(Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
+                                                                         Eigen::Vector3d(_leftFrontCloud->points[pointSearchInd[0]].x, _leftFrontCloud->points[pointSearchInd[0]].y, _leftFrontCloud->points[pointSearchInd[0]].z),
+                                                                         q_w_front,
+                                                                         t_w_front);
+                            problem.AddResidualBlock(cost_function, NULL, se3);
+                        }
+                    
                 }
             }
         }
-        ceres::Solver::Options options;
-        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-        options.num_threads = 8;
-        options.minimizer_progress_to_stdout = true;
-        options.max_solver_time_in_seconds = 600;
-        options.max_num_iterations = 1000;
+            ceres::Solver::Options options;
+            options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+            options.num_threads = 8;
+            options.minimizer_progress_to_stdout = true;
+            options.max_solver_time_in_seconds = 600;
+            options.max_num_iterations = 1000;
 
-        ceres::Solver::Summary summary;
-        ceres::Solve(options, &problem, &summary);
-        if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+            ceres::Solver::Summary summary;
+            ceres::Solve(options, &problem, &summary);
+            if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+            {
+                std::cout << " converge:" << summary.final_cost << std::endl;
+            }
+            else
+            {
+                std::cout << " not converge :" << summary.final_cost << std::endl;
+            }
+    }
+        
+        Eigen::Quaterniond q_result;
+        Eigen::Matrix3d R_result;
+        Eigen::Vector3d t_result;
+        if (!_useAutoDiff)
         {
-            std::cout << " converge:" << summary.final_cost << std::endl;
+            Eigen::Matrix<double, 6, 1> vresult;
+            vresult << se3[0], se3[1], se3[2], se3[3], se3[4], se3[5];
+            Sophus::SE3 T_result = Sophus::SE3::exp(vresult);
+            Eigen::Matrix<double, 7, 1> pose_result;
+            pose_result.block<3, 1>(0, 0) = T_result.translation();
+            pose_result.block<4, 1>(3, 0) = T_result.unit_quaternion().coeffs();
+
+            Eigen::Quaterniond q_result_temp(pose_result[6], pose_result[3], pose_result[4], pose_result[5]);
+            R_result = q_result_temp.toRotationMatrix();
+            t_result = T_result.translation();
         }
         else
         {
-            std::cout << " not converge :" << summary.final_cost << std::endl;
+            Eigen::Quaterniond q_result_temp(para_q[3], para_q[0], para_q[1], para_q[2]);
+            R_result = q_result_temp.toRotationMatrix();
+            Eigen::Vector3d t_result_temp(para_t[0], para_t[1], para_t[2]);
+            t_result = t_result_temp;
         }
-    }
-    Eigen::Quaterniond q_result;
-    Eigen::Matrix3d R_result;
-    Eigen::Vector3d t_result;
-    if (!_useAutoDiff)
-    {
-        Eigen::Matrix<double, 6, 1> vresult;
-        vresult << se3[0], se3[1], se3[2], se3[3], se3[4], se3[5];
-        Sophus::SE3 T_result = Sophus::SE3::exp(vresult);
-        Eigen::Matrix<double, 7, 1> pose_result;
-        pose_result.block<3, 1>(0, 0) = T_result.translation();
-        pose_result.block<4, 1>(3, 0) = T_result.unit_quaternion().coeffs();
-
-        Eigen::Quaterniond q_result_temp(pose_result[6], pose_result[3], pose_result[4], pose_result[5]);
-        R_result = q_result_temp.toRotationMatrix();
-        t_result = T_result.translation();
-    }
-    else
-    {
-        Eigen::Quaterniond q_result_temp(para_q[3], para_q[0], para_q[1], para_q[2]);
-        R_result = q_result_temp.toRotationMatrix();
-        Eigen::Vector3d t_result_temp(para_t[0], para_t[1], para_t[2]);
-        t_result = t_result_temp;
-    }
-    Eigen::Matrix4d T_result;
-    Eigen::Vector3d ypr;
+        Eigen::Matrix4d T_result;
+        Eigen::Vector3d ypr;
+        T_result.setIdentity();
+        T_result.block<3, 3>(0, 0) = R_result;
+        T_result.block<3, 1>(0, 3) = t_result;
+        T_result = T_base_front_temp * T_result;
+        ypr = T_result.block<3, 3>(0, 0).eulerAngles(2, 1, 0);
+        std::cout << "ypr:" << ypr << std::endl;
+        std::cout << "t_result:" << T_result.block<3, 1>(0, 3) << std::endl;
+        // std::cout << "para_q[0]:" << para_q[0] << std::endl;
+        // std::cout << "para_q[1]:" << para_q[1] << std::endl;
+        // std::cout << "para_q[2]:" << para_q[2] << std::endl;
+        // std::cout << "para_q[3]:" << para_q[3] << std::endl;
+        Eigen::AngleAxisd rotation_vector(R_result);
+        for (int i = 0; i < _SonarWaveDatas.size(); i++)
+        {
+            std::vector<double> data = _SonarWaveDatas[i];
+            double sonarTimeStamp = data[0] * 1e-6;
+            int index = timeStampSynchronization(sonarTimeStamp);
+            if (_leftBackBase)
+            {
+                Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud, R_result, t_result);
+            }
+            else
+            {
+                Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud, R_result, t_result);
+            }
+        }
+        _CloudAll->height = 1;
+        _CloudAll->width = _CloudAll->points.size();
+        if (_CloudAll->points.size() != 0)
+        {
+            pcl::io::savePCDFileASCII("CloudAllceres.pcd", *_CloudAll);
+            pcl::io::savePLYFileBinary("CloudAllceres.ply", *_CloudAll);
+        }
     
-    T_result.block<3, 3>(0, 0) = R_result;
-    T_result.block<3, 1>(0, 3) = t_result;
-    T_result = T_base_front_temp * T_result;
-    ypr = T_result.block<3, 3>(0, 0).eulerAngles(2, 1, 0);
-    std::cout << "ypr:" << ypr << std::endl;
-    std::cout << "t_result:" << T_result.block<3, 1>(0, 3) << std::endl;
-    // std::cout << "para_q[0]:" << para_q[0] << std::endl;
-    // std::cout << "para_q[1]:" << para_q[1] << std::endl;
-    // std::cout << "para_q[2]:" << para_q[2] << std::endl;
-    // std::cout << "para_q[3]:" << para_q[3] << std::endl;
-    Eigen::AngleAxisd rotation_vector(R_result);
-    for (int i = 0; i < _SonarWaveDatas.size(); i++)
-    {
-        std::vector<double> data = _SonarWaveDatas[i];
-        double sonarTimeStamp = data[0] * 1e-6;
-        int index = timeStampSynchronization(sonarTimeStamp);
-        if (_leftBackBase)
-        {
-            Sonar2cloud(SonarIndex::left_front, i, index, _leftFrontCloud, R_result, t_result);
-        }
-        else
-        {
-            Sonar2cloud(SonarIndex::left_back, i, index, _leftBackCloud, R_result, t_result);
-        }
-    }
-    _CloudAll->height = 1;
-    _CloudAll->width = _CloudAll->points.size();
-    if (_CloudAll->points.size() != 0)
-    {
-        pcl::io::savePCDFileASCII("CloudAllceres.pcd", *_CloudAll);
-        pcl::io::savePLYFileBinary("CloudAllceres.ply", *_CloudAll);
-    }
 }
