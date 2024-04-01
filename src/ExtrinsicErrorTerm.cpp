@@ -303,7 +303,7 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
         q_base_back.normalize();
         T_base_back.block<3, 3>(0, 0) = q_base_back.toRotationMatrix();
         T_base_back.block<3, 1>(0, 3) = Eigen::Vector3d(_leftBackX, _leftBackY, 0);
-   
+
         Eigen::Matrix4d T_w_base = T_wc;
         Eigen::Matrix4d T_w_back = T_w_base * T_base_back;
         Eigen::Quaterniond q_w_back(T_w_back.block<3, 3>(0, 0));
@@ -323,7 +323,7 @@ int ExtrinsicErrorTerm::Sonar2cloud(SonarIndex index, int indexSonar, int indexP
                                           Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
         T_base_front.block<3, 3>(0, 0) = q_base_front.toRotationMatrix();
         T_base_front.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
-    
+
         Eigen::Matrix4d T_w_base = T_wc;
         Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
         Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
@@ -453,25 +453,33 @@ void ExtrinsicErrorTerm::ceresAlign()
     q_base_front_temp.normalize();
     T_base_front_temp.block<3, 3>(0, 0) = q_base_front_temp.toRotationMatrix();
     T_base_front_temp.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+    std::cout << "T_base_front_temp.block<3, 3>(0, 0):" << T_base_front_temp.block<3, 3>(0, 0) << std::endl;
+    std::cout << "T_base_front_temp.block<3, 3>(0, 0):" << T_base_front_temp.block<3, 1>(0, 3) << std::endl;
+    std::cout << "T_base_back_temp.block<3, 3>(0, 0):" << T_base_back_temp.block<3, 3>(0, 0) << std::endl;
+    std::cout << "T_base_back_temp.block<3, 3>(0, 0):" << T_base_back_temp.block<3, 1>(0, 3) << std::endl;
 
-    // if (_leftBackBase)
-    // {
-    //     Eigen::Matrix4d T_back_front;
-    //     T_back_front = T_base_back_temp.inverse() * T_base_front_temp;
-    //     Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
-    //     temp_q = q_back_front;
-    //     temp_t = T_back_front.block<3, 1>(0, 3);
-    //     std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 3>(0, 0) << std::endl;
-    // }
-    // else
-    // {
-    //     Eigen::Matrix4d T_front_back;
-    //     T_front_back = T_base_front_temp.inverse() * T_base_back_temp.inverse();
-    //     Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
-    //     temp_q = q_front_back;
-    //     temp_t = T_front_back.block<3, 1>(0, 3);
-    //     std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 3>(0, 0) << std::endl;
-    // }
+    if (_leftBackBase)
+    {
+        Eigen::Matrix4d T_back_front;
+        //T_back_front = T_base_front_temp * T_base_back_temp.inverse();//实际的T_back_front
+        T_back_front = T_base_back_temp.inverse() * T_base_front_temp;//代码里定义的T_front_back
+        Eigen::Quaterniond q_back_front(T_back_front.block<3, 3>(0, 0));
+        temp_q = q_back_front;
+        temp_t = T_back_front.block<3, 1>(0, 3);
+        std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 3>(0, 0) << std::endl;
+        std::cout << "T_back_front.block<3, 3>(0, 0):" << T_back_front.block<3, 1>(0, 3) << std::endl;
+    }
+    else
+    {
+        Eigen::Matrix4d T_front_back;
+        //T_front_back = T_base_back_temp * T_base_front_temp.inverse();//实际的T_front_back
+        T_front_back = T_base_front_temp.inverse() * T_base_back_temp;//代码里定义的T_front_back
+        Eigen::Quaterniond q_front_back(T_front_back.block<3, 3>(0, 0));
+        temp_q = q_front_back;
+        temp_t = T_front_back.block<3, 1>(0, 3);
+        std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 3>(0, 0) << std::endl;
+        std::cout << "T_front_back.block<3, 3>(0, 0):" << T_front_back.block<3, 1>(0, 3) << std::endl;
+    }
     double para_t[3];
     double para_q[4];
     double se3[6];
@@ -540,8 +548,8 @@ void ExtrinsicErrorTerm::ceresAlign()
         {
             problem.AddParameterBlock(se3, 6, local_param);
         }
-        // problem.SetParameterBlockConstant(para_q);
-        // problem.SetParameterBlockConstant(para_t);
+         //problem.SetParameterBlockConstant(para_q);
+         //problem.SetParameterBlockConstant(para_t);
         std::vector<int> pointSearchInd;
         std::vector<float> pointSearchSqDis;
         for (int i = 0; i < _SonarWaveDatas.size(); i++)
@@ -612,7 +620,7 @@ void ExtrinsicErrorTerm::ceresAlign()
             // }
             if (_leftBackBase)
             {
-                ceres::LossFunction *loss_function = new ceres::HuberLoss(10);
+                ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
                 Eigen::Matrix4d T_base_back;
                 T_base_back.setIdentity();
                 Eigen::Quaterniond q_base_back = Eigen::AngleAxisd(_leftBackYaw, Eigen::Vector3d::UnitZ()) *
@@ -641,14 +649,14 @@ void ExtrinsicErrorTerm::ceresAlign()
                                                   Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
                 T_base_front.block<3, 3>(0, 0) = q_base_front.toRotationMatrix();
                 T_base_front.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
-  
+
                 Eigen::Matrix4d T_w_base = T_wc;
                 Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
                 Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
                 Eigen::Vector3d t_w_front(T_w_front.block<3, 1>(0, 3));
                 if (_useAutoDiff)
                 {
-                    ceres::LossFunction *loss_function = new ceres::HuberLoss(10);
+                    ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
 
                     ceres::CostFunction *cost_function = sonarEdgeFactor::Create(
                         Eigen::Vector3d(sonar_x, sonar_y, sonar_z),
@@ -696,7 +704,6 @@ void ExtrinsicErrorTerm::ceresAlign()
         Eigen::Matrix<double, 7, 1> pose_result;
         pose_result.block<3, 1>(0, 0) = T_result.translation();
         pose_result.block<4, 1>(3, 0) = T_result.unit_quaternion().coeffs();
-        std::cout << "pose_result:" << pose_result << std::endl;
 
         Eigen::Quaterniond q_result_temp(pose_result[6], pose_result[3], pose_result[4], pose_result[5]);
         R_result = q_result_temp.toRotationMatrix();
@@ -709,15 +716,19 @@ void ExtrinsicErrorTerm::ceresAlign()
         Eigen::Vector3d t_result_temp(para_t[0], para_t[1], para_t[2]);
         t_result = t_result_temp;
     }
+    Eigen::Matrix4d T_result;
     Eigen::Vector3d ypr;
-    ypr = R_result.eulerAngles(2, 1, 0);
-    std::cout << "R_result:" << R_result << std::endl;
+    
+    T_result.block<3, 3>(0, 0) = R_result;
+    T_result.block<3, 1>(0, 3) = t_result;
+    T_result = T_base_front_temp * T_result;
+    ypr = T_result.block<3, 3>(0, 0).eulerAngles(2, 1, 0);
     std::cout << "ypr:" << ypr << std::endl;
-    std::cout << "t_result:" << t_result << std::endl;
-    std::cout << "para_q[0]:" << para_q[0] << std::endl;
-    std::cout << "para_q[1]:" << para_q[1] << std::endl;
-    std::cout << "para_q[2]:" << para_q[2] << std::endl;
-    std::cout << "para_q[3]:" << para_q[3] << std::endl;
+    std::cout << "t_result:" << T_result.block<3, 1>(0, 3) << std::endl;
+    // std::cout << "para_q[0]:" << para_q[0] << std::endl;
+    // std::cout << "para_q[1]:" << para_q[1] << std::endl;
+    // std::cout << "para_q[2]:" << para_q[2] << std::endl;
+    // std::cout << "para_q[3]:" << para_q[3] << std::endl;
     Eigen::AngleAxisd rotation_vector(R_result);
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {
