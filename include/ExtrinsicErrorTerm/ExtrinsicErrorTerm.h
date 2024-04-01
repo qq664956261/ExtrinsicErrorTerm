@@ -93,11 +93,13 @@ protected:
     pcl::PointCloud<pcl::PointXYZI>::Ptr _leftFrontCloud;
     pcl::PointCloud<pcl::PointXYZI>::Ptr _leftBackCloud;
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr _CloudAll;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr _linecloud;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
     bool _leftBackBase {false};
     bool _useAutoDiff{false};
     bool _usePlaneConstraints{false};
+    bool _useLineConstraints{true};
 };
 
 #endif

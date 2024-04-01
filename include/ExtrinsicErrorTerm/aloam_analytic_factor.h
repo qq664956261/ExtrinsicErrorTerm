@@ -84,7 +84,7 @@ public:
 
         PlaneAnalyticCostFunction(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_j_,
                                   Eigen::Vector3d last_point_l_, Eigen::Vector3d last_point_m_, double s_, Eigen::Quaterniond wq_, Eigen::Vector3d wt_)
-            : curr_point(curr_point_), last_point_j(last_point_j_), last_point_l(last_point_l_), last_point_m(last_point_m_), s(s_),wq(wq_),wt(wt_) {}
+            : curr_point(curr_point_), last_point_j(last_point_j_), last_point_l(last_point_l_), last_point_m(last_point_m_), s(s_), wq(wq_), wt(wt_) {}
 
         virtual bool Evaluate(double const *const *parameters,
                               double *residuals,
@@ -98,7 +98,7 @@ public:
                 Eigen::Map<const Eigen::Vector3d> t_12(parameters[1]);
 
                 Eigen::Quaterniond q_corrected{wq.w(), wq.x(), wq.y(), wq.z()};
-		Eigen::Matrix<double, 3, 1> t_corrected{wt[0], wt[1], wt[2]};
+                Eigen::Matrix<double, 3, 1> t_corrected{wt[0], wt[1], wt[2]};
                 Eigen::Matrix3d R_w_front(q_corrected);
                 Eigen::Vector3d lp;
                 Eigen::Vector3d lp_r = q_12 * curr_point; //  for compute jacobian o rotation  L: dp_dr
@@ -106,7 +106,7 @@ public:
 
                 // 残差函数
                 double phi1 = (lp - last_point_j).dot(ljm_norm);
-       
+
                 residuals[0] = std::fabs(phi1);
 
                 if (jacobians != NULL)
@@ -120,11 +120,11 @@ public:
                                 dp_dr.block<3, 3>(0, 0) = skew_lp_r;
                                 Eigen::Map<Eigen::Matrix<double, 1, 4, Eigen::RowMajor>> J_so3_r(jacobians[0]);
                                 J_so3_r.setZero();
-                                //J_so3_r.block<1, 3>(0, 0) = phi1 * ljm_norm.transpose() * (dp_dr);
+                                // J_so3_r.block<1, 3>(0, 0) = phi1 * ljm_norm.transpose() * (dp_dr);
                                 J_so3_r.block<1, 3>(0, 0) = ljm_norm.transpose() * (dp_dr);
 
                                 Eigen::Map<Eigen::Matrix<double, 1, 3, Eigen::RowMajor>> J_so3_t(jacobians[1]);
-                                //J_so3_t.block<1, 3>(0, 0) = phi1 * ljm_norm.transpose() * R_w_front;
+                                // J_so3_t.block<1, 3>(0, 0) = phi1 * ljm_norm.transpose() * R_w_front;
                                 J_so3_t.block<1, 3>(0, 0) = ljm_norm.transpose() * R_w_front;
                         }
                 }
@@ -173,6 +173,52 @@ public:
 
         virtual int GlobalSize() const { return 4; } // 参数的实际维数
         virtual int LocalSize() const { return 3; }  // 正切空间上的参数维数
+};
+
+struct EdgeFactor
+{
+        EdgeFactor(Eigen::Vector3d curr_point_, Eigen::Vector3d last_point_a_,
+                   Eigen::Vector3d last_point_b_, Eigen::Quaterniond wq_, Eigen::Vector3d wt_)
+            : curr_point(curr_point_), last_point_a(last_point_a_), last_point_b(last_point_b_), wq(wq_), wt(wt_) {}
+
+        template <typename T>
+        bool operator()(const T *q, const T *t, T *residual) const
+        {
+
+                Eigen::Matrix<T, 3, 1> cp{T(curr_point.x()), T(curr_point.y()), T(curr_point.z())};
+                Eigen::Matrix<T, 3, 1> lpa{T(last_point_a.x()), T(last_point_a.y()), T(last_point_a.z())};
+                Eigen::Matrix<T, 3, 1> lpb{T(last_point_b.x()), T(last_point_b.y()), T(last_point_b.z())};
+
+                // Eigen::Quaternion<T> q_last_curr{q[3], T(s) * q[0], T(s) * q[1], T(s) * q[2]};
+                Eigen::Quaternion<T> q_12{q[3], q[0], q[1], q[2]};
+                Eigen::Matrix<T, 3, 1> t_12{T(t[0]), T(t[1]), T(t[2])};
+                Eigen::Quaternion<T> q_corrected{T(wq.w()), T(wq.x()), T(wq.y()), T(wq.z())};
+                Eigen::Matrix<T, 3, 1> t_corrected{T(wt[0]), T(wt[1]), T(wt[2])};
+
+                Eigen::Matrix<T, 3, 1> lp;
+                lp = q_corrected * q_12 * cp + q_corrected * t_12 + t_corrected;
+
+                Eigen::Matrix<T, 3, 1> nu = (lp - lpa).cross(lp - lpb);
+                Eigen::Matrix<T, 3, 1> de = lpa - lpb;
+
+                residual[0] = nu.x() / de.norm();
+                residual[1] = nu.y() / de.norm();
+                residual[2] = nu.z() / de.norm();
+
+                return true;
+        }
+
+        static ceres::CostFunction *Create(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
+                                           const Eigen::Vector3d last_point_b_, const Eigen::Quaterniond wq_, const Eigen::Vector3d wt_)
+        {
+                return (new ceres::AutoDiffCostFunction<
+                        EdgeFactor, 3, 4, 3>(
+                    new EdgeFactor(curr_point_, last_point_a_, last_point_b_, wq_, wt_)));
+        }
+
+        Eigen::Vector3d curr_point, last_point_a, last_point_b;
+        Eigen::Quaterniond wq;
+        Eigen::Vector3d wt;
 };
 
 #endif
