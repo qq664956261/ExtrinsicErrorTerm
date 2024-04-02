@@ -20,58 +20,65 @@ static Eigen::Matrix<double, 3, 3> skew(Eigen::Matrix<double, 3, 1> &mat_in)
         return skew_mat;
 }
 
-// class  EdgeAnalyticCostFunction   :  public   ceres::SizedCostFunction<1, 4,  3> {             // 优化参数维度：1     输入维度 ： q : 4   t : 3
-// public:
-//         double s;
-//         Eigen::Vector3d curr_point, last_point_a, last_point_b;
-//         EdgeAnalyticCostFunction(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
-// 									   const Eigen::Vector3d last_point_b_, const double s_  )
-//                 :  curr_point(curr_point_),   last_point_a(last_point_a_),   last_point_b(last_point_b_) ,  s(s_) {}
+class EdgeAnalyticCostFunction : public ceres::SizedCostFunction<1, 4, 3>
+{ // 优化参数维度：1     输入维度 ： q : 4   t : 3
+public:
+        double s;
+        Eigen::Vector3d curr_point, last_point_a, last_point_b;
+        Eigen::Quaterniond wq;
+        Eigen::Vector3d wt;
+        EdgeAnalyticCostFunction(const Eigen::Vector3d curr_point_, const Eigen::Vector3d last_point_a_,
+                                 const Eigen::Vector3d last_point_b_, const double s_, Eigen::Quaterniond wq_, Eigen::Vector3d wt_)
+            : curr_point(curr_point_), last_point_a(last_point_a_), last_point_b(last_point_b_), s(s_), wq(wq_), wt(wt_) {}
 
-// virtual  bool  Evaluate(double  const  *const  *parameters,
-//                                                 double  *residuals,
-//                                                 double  **jacobians) const                               //   定义残差模型
-// {
-//         Eigen::Map<const  Eigen::Quaterniond>   q_last_curr(parameters[0]);               //   存放 w  x y z
-//         Eigen::Map<const  Eigen::Vector3d>      t_last_curr(parameters[1]);
-//         Eigen::Vector3d  lp ;                           //   line point
-//         Eigen::Vector3d  lp_r ;
-//         lp_r =  q_last_curr*curr_point;
-//         lp     =   q_last_curr  * curr_point  + t_last_curr;   //   new point
-//         Eigen::Vector3d  nu =  (lp - last_point_a).cross(lp - last_point_b);
-//         Eigen::Vector3d  de = last_point_a  - last_point_b;
+        virtual bool Evaluate(double const *const *parameters,
+                              double *residuals,
+                              double **jacobians) const //   定义残差模型
+        {
+                Eigen::Quaternion<double> q_12{parameters[0][3], parameters[0][0], parameters[0][1], parameters[0][2]};
+                Eigen::Matrix<double, 3, 1> t_12{parameters[1][0], parameters[1][1], parameters[1][2]};
 
-//         residuals[0]  =  nu.norm()  /  de.norm();                              //  线残差
+                Eigen::Quaterniond q_corrected{wq.w(), wq.x(), wq.y(), wq.z()};
+                Eigen::Matrix<double, 3, 1> t_corrected{wt[0], wt[1], wt[2]};
+                Eigen::Matrix3d R_w_front(q_corrected);
+                Eigen::Vector3d lp; //   line point
+                Eigen::Vector3d lp_r;
+                lp_r = q_12 * curr_point;
+                lp = q_corrected * q_12 * curr_point + q_corrected * t_12 + t_corrected; //   new point
+                Eigen::Vector3d nu = (lp - last_point_a).cross(lp - last_point_b);
+                Eigen::Vector3d de = last_point_a - last_point_b;
 
-//         //  归一单位化
-//         nu.normalize();
+                residuals[0] = nu.norm() / de.norm(); //  线残差
 
-//         if (jacobians !=  NULL)
-//         {
-//                 if (jacobians[0]  !=  NULL)
-//                 {
-//                         Eigen::Vector3d  re = last_point_b  -   last_point_a;
-//                         Eigen::Matrix3d  skew_re  =   skew(re);
+                //  归一单位化
+                nu.normalize();
 
-//                         //  J_so3_Rotation
-//                         Eigen::Matrix3d   skew_lp_r  =  skew(lp_r);
-//                         Eigen::Matrix3d    dp_by_dr;
-//                         dp_by_dr.block<3,3>(0,0)  =  -skew_lp_r;
-//                         Eigen::Map<Eigen::Matrix<double, 1, 4, Eigen::RowMajor>> J_so3_r(jacobians[0]);
-//                         J_so3_r.setZero();
-//                         J_so3_r.block<1,3>(0,0)  =   nu.transpose()* skew_de * dp_by_dr / (de.norm()*nu.norm());
+                if (jacobians != NULL)
+                {
+                        if (jacobians[0] != NULL)
+                        {
+                                Eigen::Vector3d re = last_point_b - last_point_a;
+                                Eigen::Matrix3d skew_re = skew(re);
 
-//                         //  J_so3_Translation
-//                         Eigen::Matrix3d  dp_by_dt;
-//                         (dp_by_dt.block<3,3>(0,0)).setIdentity();
-//                         Eigen::Map<Eigen::Matrix<double,  1,  3,  Eigen::RowMajor>> J_so3_t(jacobians[1]);
-//                         J_so3_t.setZero();
-//                         J_so3_t.block<1,3>(0,0)  =   nu.transpose()  *  skew_de / (de.norm()*nu.norm());
-//                 }
-//         }
-//         return  true;
-// }
-// };
+                                //  J_so3_Rotation
+                                Eigen::Matrix3d skew_lp_r = R_w_front * -skew(lp_r);
+                                Eigen::Matrix3d dp_by_dr;
+                                dp_by_dr.block<3, 3>(0, 0) = skew_lp_r;
+                                Eigen::Map<Eigen::Matrix<double, 1, 4, Eigen::RowMajor>> J_so3_r(jacobians[0]);
+                                J_so3_r.setZero();
+                                J_so3_r.block<1, 3>(0, 0) = nu.transpose() * skew_re * dp_by_dr / (de.norm() * nu.norm());
+
+                                //  J_so3_Translation
+                                Eigen::Matrix3d dp_by_dt;
+                                (dp_by_dt.block<3, 3>(0, 0)).setIdentity();
+                                Eigen::Map<Eigen::Matrix<double, 1, 3, Eigen::RowMajor>> J_so3_t(jacobians[1]);
+                                J_so3_t.setZero();
+                                J_so3_t.block<1, 3>(0, 0) = nu.transpose() * skew_re * R_w_front / (de.norm() * nu.norm());
+                        }
+                }
+                return true;
+        }
+};
 
 class PlaneAnalyticCostFunction : public ceres::SizedCostFunction<1, 4, 3>
 {
@@ -94,8 +101,8 @@ public:
                 Eigen::Vector3d ljm_norm = (last_point_j - last_point_l).cross(last_point_j - last_point_m);
                 ljm_norm.normalize(); //  单位法向量
 
-                Eigen::Map<const Eigen::Quaterniond> q_12(parameters[0]);
-                Eigen::Map<const Eigen::Vector3d> t_12(parameters[1]);
+                Eigen::Quaternion<double> q_12{parameters[0][3], parameters[0][0], parameters[0][1], parameters[0][2]};
+                Eigen::Matrix<double, 3, 1> t_12{parameters[1][0], parameters[1][1], parameters[1][2]};
 
                 Eigen::Quaterniond q_corrected{wq.w(), wq.x(), wq.y(), wq.z()};
                 Eigen::Matrix<double, 3, 1> t_corrected{wt[0], wt[1], wt[2]};

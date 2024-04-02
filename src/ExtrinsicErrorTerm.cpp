@@ -562,7 +562,9 @@ void ExtrinsicErrorTerm::ceresAlign()
         {
             if (_useLineConstraints)
             {
-                problem.AddParameterBlock(para_q, 4, local_parameterization);
+                // problem.AddParameterBlock(para_q, 4, local_parameterization);
+                // problem.AddParameterBlock(para_t, 3);
+                problem.AddParameterBlock(para_q, 4, local_paramso3);
                 problem.AddParameterBlock(para_t, 3);
             }
             else if (_usePlaneConstraints)
@@ -735,11 +737,21 @@ void ExtrinsicErrorTerm::ceresAlign()
                                 Eigen::Vector3d point_a, point_b;
                                 point_a = 0.1 * unit_direction + point_on_line;
                                 point_b = -0.1 * unit_direction + point_on_line;
-                                std::cout << "point_a:" << point_a << std::endl;
-                                std::cout << "point_b:" << point_b << std::endl;
+                                // std::cout << "point_a:" << point_a << std::endl;
+                                // std::cout << "point_b:" << point_b << std::endl;
 
-                                ceres::CostFunction *cost_function = EdgeFactor::Create(curr_point, point_a, point_b, q_w_front, t_w_front);
-                                problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+                                // ceres::CostFunction *cost_function = EdgeFactor::Create(curr_point, point_a, point_b, q_w_front, t_w_front);
+                                // problem.AddResidualBlock(cost_function, NULL, para_q, para_t);
+                                ceres::CostFunction *factor_analytic_line = new EdgeAnalyticCostFunction(
+                                    curr_point,
+                                    point_a, point_b,
+                                    0,
+                                    q_w_front,
+                                    t_w_front);
+                                problem.AddResidualBlock(
+                                    factor_analytic_line,
+                                    NULL,
+                                    para_q, para_t);
                             }
                         }
                         std::cout << "eftnum:" << eftnum << std::endl;
