@@ -49,6 +49,17 @@ add_executable(${PROJECT_NAME}
   test_MapOptimization.cpp
   src/MapOptimization.cpp
  )
+ add_executable("mapping"
+ test_Mapping.cpp
+ src/Mapping.cpp
+)
+target_link_libraries("mapping"
+${PCL_LIBRARIES}
+${OpenCV_LIBRARIES}
+${Boost_LIBRARIES}
+${CERES_LIBRARIES}
+${Sophus_LIBRARIES}
+)
  target_link_libraries("mapOptimization"
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}
