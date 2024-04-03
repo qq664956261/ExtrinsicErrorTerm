@@ -174,8 +174,11 @@ int MapOptimization::timeStampSynchronization(double sonarWaveTimeStamp)
 
 int MapOptimization::Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
 {
-    if (_Poses[indexPose][0] * 1e-6 < _firstLapEndTime)
+    if (_Poses[indexPose][0] * 1e-6 >= _firstLapEndTime)
+    {
         return 0;
+    }
+
     float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
     float length;
     if (index == SonarIndex::left_front)
@@ -993,6 +996,7 @@ void MapOptimization::optimize()
             continue;
         _SonarWaveOptimizedDatas.push_back(_SonarWaveDatas[i]);
         _OptimizedPoses.push_back(_Poses[index]);
+        _optimizedPoseIndex.push_back(index);
     }
     std::cout << "_OptimizedPoses.size():" << _OptimizedPoses.size() << std::endl;
     std::cout << "_Poses.size():" << _Poses.size() << std::endl;
@@ -1326,6 +1330,26 @@ void MapOptimization::optimize()
     {
         std::cout << " not converge :" << summary.final_cost << std::endl;
     }
+    for (int i = 0; i < _optimizedPoseIndex.size(); i++)
+    {
+        _Poses[_optimizedPoseIndex[i]][0] = _OptimizedPoses[i][0];
+        _Poses[_optimizedPoseIndex[i]][1] = para_t[i][0];
+        _Poses[_optimizedPoseIndex[i]][2] = para_t[i][1];
+        _Poses[_optimizedPoseIndex[i]][3] = para_t[i][2];
+        Eigen::Quaterniond q(para_q[i][3], para_q[i][0], para_q[i][1], para_q[i][2]);
+        Eigen::Vector3d ypr;
+        ypr = q.toRotationMatrix().eulerAngles(2, 1, 0);
+        _Poses[_optimizedPoseIndex[i]][4] = ypr[2];
+        _Poses[_optimizedPoseIndex[i]][5] = ypr[1];
+        _Poses[_optimizedPoseIndex[i]][6] = ypr[0];
+    }
+
+    for (int i = 0; i < _Poses.size(); i++)
+    {
+
+        std::ofstream out("./optimizedPose.txt", std::ios::app);
+        out << std::to_string(_Poses[i][0]) << " " << _Poses[i][1] << " " << _Poses[i][2] << " " << _Poses[i][3] << " " << _Poses[i][4] << " " << _Poses[i][5] << " " << _Poses[i][6] << std::fixed << std::endl;
+    }
     _optimizedCloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     for (int i = 0; i < _OptimizedPoses.size(); i++)
     {
@@ -1374,7 +1398,7 @@ void MapOptimization::optimize()
         _optimizedCloud->points.push_back(point);
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr resultCloud(new pcl::PointCloud<pcl::PointXYZI>);
-    _firstLapEndTime = 0;
+    _firstLapEndTime = 1000000000000000000000000000000000000;
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {
         std::vector<double> data = _SonarWaveDatas[i];
@@ -1385,7 +1409,7 @@ void MapOptimization::optimize()
         else
             Sonar2cloud(SonarIndex::left_front, i, index, resultCloud);
     }
-    for(int i = 0; i < resultCloud->points.size(); i++)
+    for (int i = 0; i < resultCloud->points.size(); i++)
     {
         pcl::PointXYZRGB point;
         point.x = resultCloud->points[i].x;

@@ -49,6 +49,7 @@ public:
 protected:
     std::vector<std::vector<double>> _Poses;
     std::vector<std::vector<double>> _OptimizedPoses;
+    std::vector<int> _optimizedPoseIndex;
     std::vector<std::vector<double>> _SonarWaveDatas;
     std::vector<std::vector<double>> _SonarWaveOptimizedDatas;
     std::deque<std::pair<int,double>> _PoseTimeStamp;

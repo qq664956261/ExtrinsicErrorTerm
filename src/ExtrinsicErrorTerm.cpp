@@ -14,7 +14,8 @@ ExtrinsicErrorTerm::~ExtrinsicErrorTerm()
 int ExtrinsicErrorTerm::readPose(const std::string filepath)
 {
     int ret = -1;
-    std::string filenames = filepath + "/ArmyOdom.txt";
+    //std::string filenames = filepath + "/ArmyOdom.txt";
+    std::string filenames = filepath + "/optimizedPose.txt";
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
