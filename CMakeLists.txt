@@ -44,6 +44,18 @@ add_executable(${PROJECT_NAME}
   test.cpp
   src/ExtrinsicErrorTerm.cpp
  )
+
+ add_executable("mapOptimization"
+  test_MapOptimization.cpp
+  src/MapOptimization.cpp
+ )
+ target_link_libraries("mapOptimization"
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        ${Boost_LIBRARIES}
+        ${CERES_LIBRARIES}
+        ${Sophus_LIBRARIES}
+)
 target_link_libraries(${PROJECT_NAME}
         ${PCL_LIBRARIES}
         ${OpenCV_LIBRARIES}

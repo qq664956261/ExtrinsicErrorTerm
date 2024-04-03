@@ -47,8 +47,17 @@ public:
                 lp = q_corrected * q_12 * curr_point + q_corrected * t_12 + t_corrected; //   new point
                 Eigen::Vector3d nu = (lp - last_point_a).cross(lp - last_point_b);
                 Eigen::Vector3d de = last_point_a - last_point_b;
+                Eigen::Map<Eigen::Matrix<double, 1, 1>> residual(residuals);
+                //residuals[0] = nu.norm() / de.norm(); //  线残差
+                Eigen::Matrix<double, 1, 1> res;
+                res << nu.norm() / de.norm();
+                		
+		residual.template block<1, 1>(0, 0) = res;
 
-                residuals[0] = nu.norm() / de.norm(); //  线残差
+	
+		Eigen::Matrix<double, 1, 1> sqrt_info = 50 * Eigen::Matrix<double, 1, 1>::Identity();
+
+		residual.applyOnTheLeft(sqrt_info);
 
                 //  归一单位化
                 nu.normalize();
