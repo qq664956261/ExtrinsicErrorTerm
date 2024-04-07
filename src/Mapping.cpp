@@ -405,12 +405,12 @@ void Mapping::buildMultiFrame()
     if (_clustered_poses.size() > 1)
     {
         double travelDistance = 0.0;
-        std::vector<std::pair<int, Eigen::Matrix4d>> &lastGroup = _clustered_poses.back();
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &lastGroup = _clustered_poses.back();
 
         // 计算最后一组中位姿依次行走的距离
         for (size_t i = 1; i < lastGroup.size(); ++i)
         {
-            travelDistance += calculateDistance(lastGroup[i - 1].second, lastGroup[i].second);
+            travelDistance += calculateDistance(lastGroup[i - 1].second.second, lastGroup[i].second.second);
         }
 
         // 如果累计行走的距离小于阈值，则合并至前一组
@@ -418,7 +418,7 @@ void Mapping::buildMultiFrame()
         if (travelDistance < _distance_threshold * 0.7)
         {
             std::cout << "travelDistance < distance_threshold * 0.7" << std::endl;
-            std::vector<std::pair<int, Eigen::Matrix4d>> &secondLastGroup = _clustered_poses[_clustered_poses.size() - 2];
+            std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &secondLastGroup = _clustered_poses[_clustered_poses.size() - 2];
             secondLastGroup.insert(secondLastGroup.end(), lastGroup.begin(), lastGroup.end());
             _clustered_poses.pop_back(); // 移除最后一组
         }
@@ -439,12 +439,12 @@ void Mapping::multiFrameCombined()
 
     for (int i = 0; i < _clustered_poses.size(); i++)
     {
-        std::vector<std::pair<int, Eigen::Matrix4d>> &cluster = _clustered_poses[i];
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &cluster = _clustered_poses[i];
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
         for (int j = 0; j < cluster.size(); j++)
         {
             int index = cluster[j].first;
-            Eigen::Matrix4d T_wc = cluster[j].second;
+            Eigen::Matrix4d T_wc = cluster[j].second.second;
 
             float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
             float length;
@@ -477,7 +477,7 @@ void Mapping::multiFrameCombined()
             Eigen::Vector4d p_w_4;
             Eigen::Vector4d p_0; // 转到第一帧坐标系下
             p_w_4 = T_w_front * sonar_p;
-            p_0 = _clustered_poses[i][0].second.inverse() * p_w_4;
+            p_0 = _clustered_poses[i][0].second.second.inverse() * p_w_4;
             pcl::PointXYZI p;
             p.x = p_0[0];
             p.y = p_0[1];
@@ -490,18 +490,22 @@ void Mapping::multiFrameCombined()
         // {
         //     pcl::io::savePLYFileBinary(std::to_string(i) + ".ply", *cloud);
         // }
-        _p_cloud_pose.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud, _clustered_poses[i][0].second));
+        std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> p_cloud_time_pose;
+        p_cloud_time_pose.first = cloud;
+        p_cloud_time_pose.second.first = _clustered_poses[i][0].second.first;
+        p_cloud_time_pose.second.second = _clustered_poses[i][0].second.second;
+        _p_cloud_pose.push_back(p_cloud_time_pose);
     }
     // 构造多帧点云使得每帧之间有重合
-    std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> p_cloud_pose_new;
+    std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> p_cloud_pose_new;
     for (int i = 0; i < _p_cloud_pose.size() - 1; i++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::copyPointCloud(*_p_cloud_pose[i].first, *cloud1);
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud2(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::copyPointCloud(*_p_cloud_pose[i + 1].first, *cloud2);
-        Eigen::Matrix4d T1 = _p_cloud_pose[i].second;
-        Eigen::Matrix4d T2 = _p_cloud_pose[i + 1].second;
+        Eigen::Matrix4d T1 = _p_cloud_pose[i].second.second;
+        Eigen::Matrix4d T2 = _p_cloud_pose[i + 1].second.second;
         pcl::transformPointCloud(*cloud1, *cloud1, T1);
         pcl::transformPointCloud(*cloud2, *cloud2, T2);
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_combine(new pcl::PointCloud<pcl::PointXYZI>);
@@ -515,7 +519,11 @@ void Mapping::multiFrameCombined()
         // {
         //     pcl::io::savePLYFileBinary(std::to_string(i) + ".ply", *cloud_combine);
         // }
-        p_cloud_pose_new.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud_combine, T1));
+        std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> p_cloud_time_pose;
+        p_cloud_time_pose.first = cloud_combine;
+        p_cloud_time_pose.second.first = _p_cloud_pose[i].second.first;
+        p_cloud_time_pose.second.second = T1;
+        p_cloud_pose_new.push_back(p_cloud_time_pose);
     }
     _p_cloud_pose = p_cloud_pose_new;
 }
@@ -536,8 +544,11 @@ void Mapping::clusterPoses(double maxDistance)
         if (clustered[i])
             continue;
 
-        std::vector<std::pair<int, Eigen::Matrix4d>> cluster;
-        cluster.push_back(_p_sonarindex_pose[i]);
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> cluster;
+        std::pair<int, std::pair<double, Eigen::Matrix4d>> temp_pair;
+        temp_pair.first = _p_sonarindex_pose[i].first;
+        temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[i].second][0], _p_sonarindex_pose[i].second);
+        cluster.push_back(temp_pair);
         clustered[i] = true;
         int timestamp_index = _p_sonarindedx_poseindex[i].second;
         double timestamp = _Poses[timestamp_index][0] * 1e-6;
@@ -548,7 +559,9 @@ void Mapping::clusterPoses(double maxDistance)
             if (!clustered[j] && calculateDistance(_p_sonarindex_pose[i].second, _p_sonarindex_pose[j].second) <= maxDistance &&
                 std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 20)
             {
-                cluster.push_back(_p_sonarindex_pose[j]);
+                temp_pair.first = _p_sonarindex_pose[j].first;
+                temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
+                cluster.push_back(temp_pair);
                 clustered[j] = true;
             }
         }
@@ -568,12 +581,12 @@ void Mapping::map()
             continue;
         }
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud = _p_cloud_pose[i].first;
-        Eigen::Matrix4d T = _p_cloud_pose[i].second;
+        Eigen::Matrix4d T = _p_cloud_pose[i].second.second;
         pcl::PointCloud<pcl::PointXYZI>::Ptr localMap(new pcl::PointCloud<pcl::PointXYZI>);
         for (int j = 0; j < _keyframes.size(); j++)
         {
             pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes[j].first;
-            Eigen::Matrix4d T_keyframe = _keyframes[j].second;
+            Eigen::Matrix4d T_keyframe = _keyframes[j].second.second;
             pcl::PointCloud<pcl::PointXYZI>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZI>);
             pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
             *localMap += *transformedCloud;
@@ -587,7 +600,7 @@ void Mapping::map()
         pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>());
         Eigen::Matrix4f pose;
         pose = T.cast<float>();
- 
+
         _m_iNdt.align(*out, pose);
         pose = _m_iNdt.getFinalTransformation();
 
@@ -595,8 +608,8 @@ void Mapping::map()
         for (const auto &k : _keyframes)
         {
             // calculate distance between current pose and pose in keyframes
-            double delta_d = sqrt(pow(pose(0,3) - k.second(0,3), 2) + pow(pose(1,3)- k.second(1,3), 2) +
-                                  pow(pose(2,3) - k.second(2,3), 2));
+            double delta_d = sqrt(pow(pose(0, 3) - k.second.second(0, 3), 2) + pow(pose(1, 3) - k.second.second(1, 3), 2) +
+                                  pow(pose(2, 3) - k.second.second(2, 3), 2));
             // store into variable
             if (delta_d < closest_d)
             {
@@ -604,14 +617,17 @@ void Mapping::map()
             }
         }
         std::cout << "closest_d:" << closest_d << std::endl;
-        if(closest_d > 0.8 * _distance_threshold)
+        std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> keyframe;
+        keyframe.first = cloud;
+        keyframe.second.first = _p_cloud_pose[i].second.first;
+        keyframe.second.second = pose.cast<double>();
+        if (closest_d > 0.8 * _distance_threshold)
         {
-            _keyframes.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud, pose.cast<double>()));
+            _keyframes.push_back(keyframe);
         }
         // _keyframes_show.push_back(_p_cloud_pose[i]);
-         _keyframes_show.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud, pose.cast<double>()));
+        _keyframes_show.push_back(keyframe);
 
-        
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
     }
@@ -620,7 +636,7 @@ void Mapping::map()
     for (int j = 0; j < _keyframes.size(); j++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes[j].first;
-        Eigen::Matrix4d T_keyframe = _keyframes[j].second;
+        Eigen::Matrix4d T_keyframe = _keyframes[j].second.second;
         pcl::PointCloud<pcl::PointXYZI>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
         *out += *transformedCloud;
@@ -631,10 +647,10 @@ void Mapping::map()
     {
         pcl::io::savePLYFileBinary("out.ply", *out);
     }
-        for (int j = 0; j < _keyframes_show.size(); j++)
+    for (int j = 0; j < _keyframes_show.size(); j++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes_show[j].first;
-        Eigen::Matrix4d T_keyframe = _keyframes_show[j].second;
+        Eigen::Matrix4d T_keyframe = _keyframes_show[j].second.second;
         pcl::PointCloud<pcl::PointXYZI>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
         *out_show += *transformedCloud;
