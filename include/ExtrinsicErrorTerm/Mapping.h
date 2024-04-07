@@ -83,7 +83,9 @@ protected:
     std::vector<std::vector<std::pair<int, Eigen::Matrix4d>>> _clustered_poses;
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> _p_cloud_pose;
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> _keyframes;
+    std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> _keyframes_show;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
+    double _distance_threshold{0.5};
 };
 
 #endif

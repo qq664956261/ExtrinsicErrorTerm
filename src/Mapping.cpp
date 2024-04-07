@@ -397,10 +397,10 @@ void Mapping::buildMultiFrame()
         _p_sonarindedx_poseindex.push_back(std::pair<int, int>(i, index));
         _p_sonarindex_pose.push_back(std::pair<int, Eigen::Matrix4d>(i, T_wc));
     }
-    double distance_threshold = 0.5;
+
     bool first_pose = false;
     Eigen::Matrix4d first_T;
-    clusterPoses(distance_threshold);
+    clusterPoses(_distance_threshold);
 
     if (_clustered_poses.size() > 1)
     {
@@ -415,9 +415,9 @@ void Mapping::buildMultiFrame()
 
         // 如果累计行走的距离小于阈值，则合并至前一组
         std::cout << "travelDistance:" << travelDistance << std::endl;
-        if (travelDistance < distance_threshold * 0.7)
+        if (travelDistance < _distance_threshold * 0.7)
         {
-            std::cout << "travelDistance < distance_threshold * 0.5" << std::endl;
+            std::cout << "travelDistance < distance_threshold * 0.7" << std::endl;
             std::vector<std::pair<int, Eigen::Matrix4d>> &secondLastGroup = _clustered_poses[_clustered_poses.size() - 2];
             secondLastGroup.insert(secondLastGroup.end(), lastGroup.begin(), lastGroup.end());
             _clustered_poses.pop_back(); // 移除最后一组
@@ -564,6 +564,7 @@ void Mapping::map()
         if (_keyframes.empty())
         {
             _keyframes.push_back(_p_cloud_pose[i]);
+            _keyframes_show.push_back(_p_cloud_pose[i]);
             continue;
         }
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud = _p_cloud_pose[i].first;
@@ -586,6 +587,7 @@ void Mapping::map()
         pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>());
         Eigen::Matrix4f pose;
         pose = T.cast<float>();
+ 
         _m_iNdt.align(*out, pose);
         pose = _m_iNdt.getFinalTransformation();
 
@@ -602,16 +604,19 @@ void Mapping::map()
             }
         }
         std::cout << "closest_d:" << closest_d << std::endl;
-        if(closest_d > 0.4)
+        if(closest_d > 0.8 * _distance_threshold)
         {
             _keyframes.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud, pose.cast<double>()));
         }
+        // _keyframes_show.push_back(_p_cloud_pose[i]);
+         _keyframes_show.push_back(std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>(cloud, pose.cast<double>()));
 
         
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr out_show(new pcl::PointCloud<pcl::PointXYZI>);
     for (int j = 0; j < _keyframes.size(); j++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes[j].first;
@@ -625,5 +630,19 @@ void Mapping::map()
     if (out->points.size() != 0)
     {
         pcl::io::savePLYFileBinary("out.ply", *out);
+    }
+        for (int j = 0; j < _keyframes_show.size(); j++)
+    {
+        pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes_show[j].first;
+        Eigen::Matrix4d T_keyframe = _keyframes_show[j].second;
+        pcl::PointCloud<pcl::PointXYZI>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZI>);
+        pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
+        *out_show += *transformedCloud;
+    }
+    out_show->height = 1;
+    out_show->width = out_show->points.size();
+    if (out_show->points.size() != 0)
+    {
+        pcl::io::savePLYFileBinary("out_show.ply", *out_show);
     }
 }
