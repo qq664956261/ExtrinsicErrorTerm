@@ -19,7 +19,7 @@
 #include "ceres/autodiff_cost_function.h"
 #include "ExtrinsicErrorTerm/lidarFactor.h"
 #include "ExtrinsicErrorTerm/aloam_analytic_factor.h"
-
+#include <pcl/registration/ndt.h>
 enum SonarIndex
 {
     left_front = 0,
@@ -27,7 +27,7 @@ enum SonarIndex
 
 };
 
-class  Mapping
+class Mapping
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -40,6 +40,10 @@ public:
     int timeStampSynchronization(double sonarWaveTimeStamp);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, Eigen::Matrix3d R12, Eigen::Vector3d t12);
+    void buildMultiFrame();
+    double calculateDistance(const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
+    void clusterPoses(double maxDistance);
+    void multiFrameCombined();
     void map();
 
     typedef std::shared_ptr<Mapping> Ptr;
@@ -50,14 +54,14 @@ protected:
     std::vector<int> _optimizedPoseIndex;
     std::vector<std::vector<double>> _SonarWaveDatas;
     std::vector<std::vector<double>> _SonarWaveOptimizedDatas;
-    std::deque<std::pair<int,double>> _PoseTimeStamp;
-    std::deque<std::pair<int,double>> _SonarWaveTimeStamp;
-    double _leftFrontFovRad{15};          
-    double _leftFrontX{0.156};  // sonar1坐标系相对base_link坐标系的x外参
-    double _leftFronty{0.148};  // sonar1坐标系相对base_link坐标系的y外参
+    std::deque<std::pair<int, double>> _PoseTimeStamp;
+    std::deque<std::pair<int, double>> _SonarWaveTimeStamp;
+    double _leftFrontFovRad{15};
+    double _leftFrontX{0.156}; // sonar1坐标系相对base_link坐标系的x外参
+    double _leftFronty{0.148}; // sonar1坐标系相对base_link坐标系的y外参
     // double _leftFrontX{0.136};  // sonar1坐标系相对base_link坐标系的x外参
     // double _leftFronty{0.128};  // sonar1坐标系相对base_link坐标系的y外参
-    double _leftFrontyaw{1.57};// sonar1坐标系相对base_link坐标系的yaw外参
+    double _leftFrontyaw{1.57}; // sonar1坐标系相对base_link坐标系的yaw外参
     double _leftBackFovRad{15};
     double _leftBackX{-0.161};  // sonar2坐标系相对base_link坐标系的x外参
     double _leftBackY{0.182};   // sonar2坐标系相对base_link坐标系的x外参
@@ -69,11 +73,17 @@ protected:
     pcl::PointCloud<pcl::PointXYZI>::Ptr _linecloud;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftBack;
     pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtreeFromLeftFront;
-    bool _leftBackBase {false};
+    bool _leftBackBase{false};
     bool _useAutoDiff{true};
     bool _usePlaneConstraints{false};
     bool _useLineConstraints{false};
     double _firstLapEndTime;
+    std::vector<std::pair<int, int>> _p_sonarindedx_poseindex;
+    std::vector<std::pair<int, Eigen::Matrix4d>> _p_sonarindex_pose;
+    std::vector<std::vector<std::pair<int, Eigen::Matrix4d>>> _clustered_poses;
+    std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> _p_cloud_pose;
+    std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, Eigen::Matrix4d>> _keyframes;
+    pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
 };
 
 #endif
