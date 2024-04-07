@@ -6,6 +6,10 @@ Mapping::Mapping()
     _CloudAll.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     _kdtreeFromLeftBack.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
     _kdtreeFromLeftFront.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
+    _m_iNdt.setResolution(0.1);
+    _m_iNdt.setMaximumIterations(100);
+    _m_iNdt.setTransformationEpsilon(0.00001);
+    _m_iNdt.setStepSize(0.01);
 }
 Mapping::~Mapping()
 {
@@ -531,8 +535,7 @@ void Mapping::multiFrameCombined()
 double Mapping::calculateDistance(const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
     return std::sqrt((pose1(0, 3) - pose2(0, 3)) * (pose1(0, 3) - pose2(0, 3)) +
-                     (pose1(1, 3) - pose2(1, 3)) * (pose1(1, 3) - pose2(1, 3)) +
-                     (pose1(2, 3) - pose2(2, 3)) * (pose1(2, 3) - pose2(2, 3)));
+                     (pose1(1, 3) - pose2(1, 3)) * (pose1(1, 3) - pose2(1, 3)));
 }
 void Mapping::clusterPoses(double maxDistance)
 {
@@ -591,10 +594,7 @@ void Mapping::map()
             pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
             *localMap += *transformedCloud;
         }
-        _m_iNdt.setResolution(0.1);
-        _m_iNdt.setMaximumIterations(100);
-        _m_iNdt.setTransformationEpsilon(0.00001);
-        _m_iNdt.setStepSize(0.01);
+
         _m_iNdt.setInputTarget(localMap);
         _m_iNdt.setInputSource(cloud);
         pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>());
@@ -608,8 +608,7 @@ void Mapping::map()
         for (const auto &k : _keyframes)
         {
             // calculate distance between current pose and pose in keyframes
-            double delta_d = sqrt(pow(pose(0, 3) - k.second.second(0, 3), 2) + pow(pose(1, 3) - k.second.second(1, 3), 2) +
-                                  pow(pose(2, 3) - k.second.second(2, 3), 2));
+            double delta_d = sqrt(pow(pose(0, 3) - k.second.second(0, 3), 2) + pow(pose(1, 3) - k.second.second(1, 3), 2));
             // store into variable
             if (delta_d < closest_d)
             {
@@ -630,6 +629,29 @@ void Mapping::map()
 
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
+        int loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
+        if (loop_index > -1 && !_first_loop)
+        {
+            std::cout << "loop_index:" << loop_index << std::endl;
+            _first_loop = true;
+            pcl::PointCloud<pcl::PointXYZI>::Ptr source = cloud;
+            Eigen::Matrix4d T_source = pose.cast<double>();
+            Eigen::Matrix4d T_target = _keyframes[loop_index].second.second;
+            pcl::PointCloud<pcl::PointXYZI>::Ptr target = _keyframes[loop_index].first;
+            _m_iNdt.setInputTarget(target);
+            _m_iNdt.setInputSource(cloud);
+            pcl::PointCloud<pcl::PointXYZI>::Ptr out_loop(new pcl::PointCloud<pcl::PointXYZI>());
+
+            _m_iNdt.align(*out_loop,(T_target.inverse() * T_source).cast<float>());
+            Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
+            *out_loop += *target;
+            out_loop->height = 1;
+            out_loop->width = out_loop->points.size();
+            if (out_loop->points.size() != 0)
+            {
+                pcl::io::savePLYFileBinary("out_loop.ply", *out_loop);
+            }
+        }
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
     pcl::PointCloud<pcl::PointXYZI>::Ptr out_show(new pcl::PointCloud<pcl::PointXYZI>);
@@ -661,4 +683,24 @@ void Mapping::map()
     {
         pcl::io::savePLYFileBinary("out_show.ply", *out_show);
     }
+}
+
+void Mapping::LoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
+{
+}
+int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
+{
+    std::cout << "_keyframes.size():" << _keyframes.size() << std::endl;
+    for (int i = 0; i < _keyframes.size(); i++)
+    {
+        Eigen::Matrix4d T_keyframe = _keyframes[i].second.second;
+        double distance = calculateDistance(pose, T_keyframe);
+        if (distance < _distance_threshold * 0.5 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
+        {
+            std::cout << "distance:" << distance << std::endl;
+            std::cout << "LoopClosure" << std::endl;
+            return i;
+        }
+    }
+    return -1;
 }

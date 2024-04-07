@@ -45,6 +45,8 @@ public:
     void clusterPoses(double maxDistance);
     void multiFrameCombined();
     void map();
+    void LoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
+    int DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
 
     typedef std::shared_ptr<Mapping> Ptr;
 
@@ -85,7 +87,8 @@ protected:
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes;
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
-    double _distance_threshold{0.5};
+    double _distance_threshold{2};
+    bool _first_loop{false};
 };
 
 #endif
