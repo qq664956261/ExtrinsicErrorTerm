@@ -603,6 +603,14 @@ void Mapping::map()
 
         _m_iNdt.align(*out, pose);
         pose = _m_iNdt.getFinalTransformation();
+        if (i < _p_cloud_pose.size() - 1)
+        {
+            Eigen::Matrix4d T_next = _p_cloud_pose[i + 1].second.second;
+            Eigen::Matrix4d T_12 = T.inverse() * T_next;
+            _p_cloud_pose[i].second.second = pose.cast<double>();
+            _p_cloud_pose[i+1].second.second = pose.cast<double>() * T_12;
+
+        }
 
         float closest_d = std::numeric_limits<float>::infinity();
         for (const auto &k : _keyframes)
@@ -620,7 +628,7 @@ void Mapping::map()
         keyframe.first = cloud;
         keyframe.second.first = _p_cloud_pose[i].second.first;
         keyframe.second.second = pose.cast<double>();
-        if (closest_d > 0.8 * _distance_threshold)
+        if (closest_d > 0.7 * _distance_threshold)
         {
             _keyframes.push_back(keyframe);
         }
@@ -630,7 +638,8 @@ void Mapping::map()
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
         int loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
-        if (loop_index > -1 && !_first_loop)
+         //if (loop_index > -1 && !_first_loop)
+          if (loop_index > -1)
         {
             std::cout << "loop_index:" << loop_index << std::endl;
             _first_loop = true;
@@ -641,16 +650,20 @@ void Mapping::map()
             _m_iNdt.setInputTarget(target);
             _m_iNdt.setInputSource(cloud);
             pcl::PointCloud<pcl::PointXYZI>::Ptr out_loop(new pcl::PointCloud<pcl::PointXYZI>());
+            std::cout<<"cloud->points.size():"<<cloud->points.size()<<std::endl;
+            std::cout<<"target->points.size():"<<target->points.size()<<std::endl;
 
-            _m_iNdt.align(*out_loop,(T_target.inverse() * T_source).cast<float>());
+            _m_iNdt.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
             Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
             *out_loop += *target;
+            std::cout<<"out_loop->points.size():"<<out_loop->points.size()<<std::endl;
             out_loop->height = 1;
             out_loop->width = out_loop->points.size();
             if (out_loop->points.size() != 0)
             {
                 pcl::io::savePLYFileBinary("out_loop.ply", *out_loop);
             }
+            LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
         }
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
@@ -685,8 +698,118 @@ void Mapping::map()
     }
 }
 
-void Mapping::LoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
+void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
+  
+    double para_t[_keyframes_show.size()][3];
+    double para_q[_keyframes_show.size()][4];
+    for (int i = 0; i < _keyframes_show.size(); i++)
+    {
+        para_t[i][0] = _keyframes_show[i].second.second(0, 3);
+        para_t[i][1] = _keyframes_show[i].second.second(1, 3);
+        para_t[i][2] = _keyframes_show[i].second.second(2, 3);
+        Eigen::Matrix3d temp_R = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+        Eigen::Quaterniond temp_q(temp_R);
+
+        para_q[i][0] = temp_q.x();
+        para_q[i][1] = temp_q.y();
+        para_q[i][2] = temp_q.z();
+        para_q[i][3] = temp_q.w();
+    }
+
+    ceres::Problem problem;
+    ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
+    ceres::LocalParameterization *local_param = new SE3Param();
+    ceres::LocalParameterization *local_paramso3 = new PoseSO3Parameterization();
+    for (int i = 0; i < _keyframes_show.size(); i++)
+    {
+
+        problem.AddParameterBlock(para_q[i], 4, local_parameterization);
+        problem.AddParameterBlock(para_t[i], 3);
+    }
+
+    for (int i = 0; i < _keyframes_show.size() - 1; i++)
+    {
+        Eigen::Vector3d para_t_constraint;
+        Eigen::Vector4f para_q_constraint;
+        Eigen::Matrix3d temp_R2 = _keyframes_show[i + 1].second.second.block<3, 3>(0, 0);
+        Eigen::Quaterniond temp_q_2(temp_R2);
+        Eigen::Vector3d temp_t_2(_keyframes_show[i + 1].second.second(0, 3), _keyframes_show[i + 1].second.second(1, 3), _keyframes_show[i + 1].second.second(2, 3));
+        Eigen::Matrix3d temp_R1 = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+        Eigen::Quaterniond temp_q_1(temp_R1);
+        Eigen::Vector3d temp_t_1(_keyframes_show[i].second.second(0, 3), _keyframes_show[i].second.second(1, 3), _keyframes_show[i].second.second(2, 3));
+
+        Eigen::Matrix3d R_constraint;
+        Eigen::Vector3d t_constraint;
+
+        R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
+        t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
+
+        Eigen::Quaterniond q_constraint(R_constraint);
+
+        para_t_constraint = t_constraint;
+        para_q_constraint[0] = q_constraint.x();
+        para_q_constraint[1] = q_constraint.y();
+        para_q_constraint[2] = q_constraint.z();
+        para_q_constraint[3] = q_constraint.w();
+        ceres::CostFunction *cost_function = consecutivePose::Create(
+            para_q_constraint,
+            para_t_constraint);
+        problem.AddResidualBlock(cost_function, NULL, para_q[i], para_t[i], para_q[i + 1], para_t[i + 1]);
+    }
+  
+    Eigen::Vector3d para_t_loop;
+    Eigen::Vector4f para_q_loop;
+    Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
+    Eigen::Quaterniond loop_q_2(loop_R2);
+    Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
+    Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
+    Eigen::Quaterniond loop_q_1(loop_R1);
+    Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
+
+    Eigen::Matrix3d R_constraint_loop;
+    Eigen::Vector3d t_constraint_loop;
+
+    R_constraint_loop = loop_q_2.toRotationMatrix().inverse() * loop_q_1.toRotationMatrix();
+    t_constraint_loop = loop_q_2.toRotationMatrix().inverse() * (loop_t_1 - loop_t_2);
+
+    Eigen::Quaterniond q_constraint_loop(R_constraint_loop);
+
+    para_t_loop = t_constraint_loop;
+    para_q_loop[0] = q_constraint_loop.x();
+    para_q_loop[1] = q_constraint_loop.y();
+    para_q_loop[2] = q_constraint_loop.z();
+    para_q_loop[3] = q_constraint_loop.w();
+    ceres::CostFunction *cost_function = consecutivePose::Create(
+        para_q_loop,
+        para_t_loop);
+    problem.AddResidualBlock(cost_function, NULL, para_q[index1], para_t[index1], para_q[index2], para_t[index2]);
+
+        ceres::Solver::Options options;
+    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+    options.num_threads = 20;
+    options.minimizer_progress_to_stdout = true;
+    options.max_solver_time_in_seconds = 600;
+    options.max_num_iterations = 1000;
+
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+    if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+    {
+        std::cout << " converge:" << summary.final_cost << std::endl;
+    }
+    else
+    {
+        std::cout << " not converge :" << summary.final_cost << std::endl;
+    }
+    for (int i = 0; i < _keyframes_show.size(); i++)
+    {
+        Eigen::Matrix3d R;
+        Eigen::Quaterniond q(para_q[i][3], para_q[i][0], para_q[i][1], para_q[i][2]);
+        R = q.toRotationMatrix();
+        _keyframes_show[i].second.second.block<3, 3>(0, 0) = R;
+        _keyframes_show[i].second.second.block<3, 1>(0, 3) = Eigen::Vector3d(para_t[i][0], para_t[i][1], para_t[i][2]);
+    }
 }
 int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
 {
@@ -695,7 +818,7 @@ int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
     {
         Eigen::Matrix4d T_keyframe = _keyframes[i].second.second;
         double distance = calculateDistance(pose, T_keyframe);
-        if (distance < _distance_threshold * 0.5 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
+        if (distance < _distance_threshold * 0.8 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
         {
             std::cout << "distance:" << distance << std::endl;
             std::cout << "LoopClosure" << std::endl;

@@ -45,7 +45,7 @@ public:
     void clusterPoses(double maxDistance);
     void multiFrameCombined();
     void map();
-    void LoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
+    void LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
     int DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
 
     typedef std::shared_ptr<Mapping> Ptr;
