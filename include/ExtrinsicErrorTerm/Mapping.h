@@ -20,6 +20,7 @@
 #include "ExtrinsicErrorTerm/lidarFactor.h"
 #include "ExtrinsicErrorTerm/aloam_analytic_factor.h"
 #include <pcl/registration/ndt.h>
+#include <pcl/registration/icp.h>
 enum SonarIndex
 {
     left_front = 0,
@@ -87,8 +88,10 @@ protected:
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes;
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
-    double _distance_threshold{2};
+    pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
+    double _distance_threshold{0.5};
     bool _first_loop{false};
+    int _loop_index{0};
 };
 
 #endif

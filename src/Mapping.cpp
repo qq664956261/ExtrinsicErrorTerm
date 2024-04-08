@@ -8,8 +8,19 @@ Mapping::Mapping()
     _kdtreeFromLeftFront.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>);
     _m_iNdt.setResolution(0.1);
     _m_iNdt.setMaximumIterations(100);
-    _m_iNdt.setTransformationEpsilon(0.00001);
+    _m_iNdt.setTransformationEpsilon(0.01);
     _m_iNdt.setStepSize(0.01);
+    // 设置最大的对应点对距离（在此距离范围内的点对才会被用来计算变换矩阵）
+    _m_icp.setMaxCorrespondenceDistance(0.1);
+
+    // 设置变换矩阵的最大迭代次数
+    _m_icp.setMaximumIterations(100);
+
+    // 设置两次变换之间的差异的阈值，当变换足够接近上一次变换时算法将停止
+    _m_icp.setTransformationEpsilon(1e-8);
+
+    // 设置均方误差的阈值，当误差小于这个阈值时算法将停止
+    //_m_icp.setEuclideanFitnessEpsilon(1);
 }
 Mapping::~Mapping()
 {
@@ -436,6 +447,7 @@ void Mapping::buildMultiFrame()
     //     num_cluster += _clustered_poses[i].size();
     // }
     // std::cout << "num_cluster:" << num_cluster << std::endl;
+    std::cout << "multiFrameCombined" << std::endl;
     multiFrameCombined();
 }
 void Mapping::multiFrameCombined()
@@ -505,11 +517,15 @@ void Mapping::multiFrameCombined()
     for (int i = 0; i < _p_cloud_pose.size() - 1; i++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZI>);
-        pcl::copyPointCloud(*_p_cloud_pose[i].first, *cloud1);
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud2(new pcl::PointCloud<pcl::PointXYZI>);
+        Eigen::Matrix4d T1;
+        Eigen::Matrix4d T2;
+
+        pcl::copyPointCloud(*_p_cloud_pose[i].first, *cloud1);
         pcl::copyPointCloud(*_p_cloud_pose[i + 1].first, *cloud2);
-        Eigen::Matrix4d T1 = _p_cloud_pose[i].second.second;
-        Eigen::Matrix4d T2 = _p_cloud_pose[i + 1].second.second;
+        T1 = _p_cloud_pose[i].second.second;
+        T2 = _p_cloud_pose[i + 1].second.second;
+
         pcl::transformPointCloud(*cloud1, *cloud1, T1);
         pcl::transformPointCloud(*cloud2, *cloud2, T2);
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_combine(new pcl::PointCloud<pcl::PointXYZI>);
@@ -575,8 +591,13 @@ void Mapping::clusterPoses(double maxDistance)
 
 void Mapping::map()
 {
+    std::cout << "_p_cloud_pose.size():" << _p_cloud_pose.size() << std::endl;
     for (int i = 0; i < _p_cloud_pose.size(); i++)
     {
+        if (_loop_index == 1)
+        {
+            continue;
+        }
         if (_keyframes.empty())
         {
             _keyframes.push_back(_p_cloud_pose[i]);
@@ -603,13 +624,13 @@ void Mapping::map()
 
         _m_iNdt.align(*out, pose);
         pose = _m_iNdt.getFinalTransformation();
+        // pose = T.cast<float>();
         if (i < _p_cloud_pose.size() - 1)
         {
             Eigen::Matrix4d T_next = _p_cloud_pose[i + 1].second.second;
             Eigen::Matrix4d T_12 = T.inverse() * T_next;
             _p_cloud_pose[i].second.second = pose.cast<double>();
-            _p_cloud_pose[i+1].second.second = pose.cast<double>() * T_12;
-
+            _p_cloud_pose[i + 1].second.second = pose.cast<double>() * T_12;
         }
 
         float closest_d = std::numeric_limits<float>::infinity();
@@ -638,8 +659,8 @@ void Mapping::map()
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
         int loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
-         //if (loop_index > -1 && !_first_loop)
-          if (loop_index > -1)
+        // if (loop_index > -1 && !_first_loop)
+        if (loop_index > -1)
         {
             std::cout << "loop_index:" << loop_index << std::endl;
             _first_loop = true;
@@ -649,14 +670,18 @@ void Mapping::map()
             pcl::PointCloud<pcl::PointXYZI>::Ptr target = _keyframes[loop_index].first;
             _m_iNdt.setInputTarget(target);
             _m_iNdt.setInputSource(cloud);
+            _m_icp.setInputTarget(target);
+            _m_icp.setInputSource(cloud);
             pcl::PointCloud<pcl::PointXYZI>::Ptr out_loop(new pcl::PointCloud<pcl::PointXYZI>());
-            std::cout<<"cloud->points.size():"<<cloud->points.size()<<std::endl;
-            std::cout<<"target->points.size():"<<target->points.size()<<std::endl;
+            std::cout << "cloud->points.size():" << cloud->points.size() << std::endl;
+            std::cout << "target->points.size():" << target->points.size() << std::endl;
 
-            _m_iNdt.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
-            Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
+            //_m_iNdt.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
+            _m_icp.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
+            //Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
+            Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
             *out_loop += *target;
-            std::cout<<"out_loop->points.size():"<<out_loop->points.size()<<std::endl;
+            std::cout << "out_loop->points.size():" << out_loop->points.size() << std::endl;
             out_loop->height = 1;
             out_loop->width = out_loop->points.size();
             if (out_loop->points.size() != 0)
@@ -664,6 +689,7 @@ void Mapping::map()
                 pcl::io::savePLYFileBinary("out_loop.ply", *out_loop);
             }
             LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
+            _loop_index++;
         }
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
@@ -700,7 +726,7 @@ void Mapping::map()
 
 void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
-  
+
     double para_t[_keyframes_show.size()][3];
     double para_q[_keyframes_show.size()][4];
     for (int i = 0; i < _keyframes_show.size(); i++)
@@ -757,7 +783,7 @@ void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matri
             para_t_constraint);
         problem.AddResidualBlock(cost_function, NULL, para_q[i], para_t[i], para_q[i + 1], para_t[i + 1]);
     }
-  
+
     Eigen::Vector3d para_t_loop;
     Eigen::Vector4f para_q_loop;
     Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
@@ -780,12 +806,14 @@ void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matri
     para_q_loop[1] = q_constraint_loop.y();
     para_q_loop[2] = q_constraint_loop.z();
     para_q_loop[3] = q_constraint_loop.w();
-    ceres::CostFunction *cost_function = consecutivePose::Create(
+    ceres::CostFunction *cost_function = loopPose::Create(
         para_q_loop,
         para_t_loop);
     problem.AddResidualBlock(cost_function, NULL, para_q[index1], para_t[index1], para_q[index2], para_t[index2]);
+    problem.SetParameterBlockConstant(para_q[index1]);
+    problem.SetParameterBlockConstant(para_t[index1]);
 
-        ceres::Solver::Options options;
+    ceres::Solver::Options options;
     options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
     options.num_threads = 20;
     options.minimizer_progress_to_stdout = true;
@@ -818,7 +846,7 @@ int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
     {
         Eigen::Matrix4d T_keyframe = _keyframes[i].second.second;
         double distance = calculateDistance(pose, T_keyframe);
-        if (distance < _distance_threshold * 0.8 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
+        if (distance < _distance_threshold * 0.5 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
         {
             std::cout << "distance:" << distance << std::endl;
             std::cout << "LoopClosure" << std::endl;
