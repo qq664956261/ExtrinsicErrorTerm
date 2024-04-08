@@ -528,6 +528,12 @@ void Mapping::multiFrameCombined()
 
         pcl::transformPointCloud(*cloud1, *cloud1, T1);
         pcl::transformPointCloud(*cloud2, *cloud2, T2);
+        for(auto &p:cloud1->points){
+            p.intensity = 1;
+        }
+        for(auto &p:cloud2->points){
+            p.intensity = 2;
+        }
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_combine(new pcl::PointCloud<pcl::PointXYZI>);
         cloud_combine->points.insert(cloud_combine->points.end(), cloud1->points.begin(), cloud1->points.end());
         cloud_combine->points.insert(cloud_combine->points.end(), cloud2->points.begin(), cloud2->points.end());
@@ -710,7 +716,12 @@ void Mapping::map()
     }
     for (int j = 0; j < _keyframes_show.size(); j++)
     {
-        pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe = _keyframes_show[j].first;
+        pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe(new pcl::PointCloud<pcl::PointXYZI>);
+        for(auto &p:_keyframes_show[j].first->points){
+            if(p.intensity == 1){
+                keyframe->points.push_back(p);
+            }
+        }
         Eigen::Matrix4d T_keyframe = _keyframes_show[j].second.second;
         pcl::PointCloud<pcl::PointXYZI>::Ptr transformedCloud(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe);
