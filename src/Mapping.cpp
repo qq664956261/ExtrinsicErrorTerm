@@ -29,7 +29,7 @@ Mapping::~Mapping()
 int Mapping::readPose(const std::string filepath)
 {
     int ret = -1;
-    std::string filenames = filepath + "/ArmyOdom.txt";
+    std::string filenames = filepath + "/ArmyOdom1.txt";
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -64,7 +64,7 @@ int Mapping::readPose(const std::string filepath)
 int Mapping::readSonarWaveData(const std::string filepath)
 {
     int ret = -1;
-    std::string filenames = filepath + "/ArmyUltra.txt";
+    std::string filenames = filepath + "/ArmyUltra1.txt";
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -528,10 +528,12 @@ void Mapping::multiFrameCombined()
 
         pcl::transformPointCloud(*cloud1, *cloud1, T1);
         pcl::transformPointCloud(*cloud2, *cloud2, T2);
-        for(auto &p:cloud1->points){
+        for (auto &p : cloud1->points)
+        {
             p.intensity = 1;
         }
-        for(auto &p:cloud2->points){
+        for (auto &p : cloud2->points)
+        {
             p.intensity = 2;
         }
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_combine(new pcl::PointCloud<pcl::PointXYZI>);
@@ -582,7 +584,7 @@ void Mapping::clusterPoses(double maxDistance)
         for (size_t j = i + 1; j < _p_sonarindex_pose.size(); ++j)
         {
             if (!clustered[j] && calculateDistance(_p_sonarindex_pose[i].second, _p_sonarindex_pose[j].second) <= maxDistance &&
-                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 20)
+                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 40)
             {
                 temp_pair.first = _p_sonarindex_pose[j].first;
                 temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
@@ -610,7 +612,8 @@ void Mapping::map()
             _keyframes_show.push_back(_p_cloud_pose[i]);
             continue;
         }
-        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud = _p_cloud_pose[i].first;
+        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
+        pcl::copyPointCloud(*_p_cloud_pose[i].first, *cloud);
         Eigen::Matrix4d T = _p_cloud_pose[i].second.second;
         pcl::PointCloud<pcl::PointXYZI>::Ptr localMap(new pcl::PointCloud<pcl::PointXYZI>);
         for (int j = 0; j < _keyframes.size(); j++)
@@ -630,7 +633,7 @@ void Mapping::map()
 
         _m_iNdt.align(*out, pose);
         pose = _m_iNdt.getFinalTransformation();
-        // pose = T.cast<float>();
+        pose = T.cast<float>();
         if (i < _p_cloud_pose.size() - 1)
         {
             Eigen::Matrix4d T_next = _p_cloud_pose[i + 1].second.second;
@@ -652,7 +655,9 @@ void Mapping::map()
         }
         std::cout << "closest_d:" << closest_d << std::endl;
         std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> keyframe;
-        keyframe.first = cloud;
+        keyframe.first.reset(new pcl::PointCloud<pcl::PointXYZI>);
+        pcl::copyPointCloud(*cloud, *keyframe.first);
+        //keyframe.first = cloud;
         keyframe.second.first = _p_cloud_pose[i].second.first;
         keyframe.second.second = pose.cast<double>();
         if (closest_d > 0.7 * _distance_threshold)
@@ -670,10 +675,10 @@ void Mapping::map()
         {
             std::cout << "loop_index:" << loop_index << std::endl;
             _first_loop = true;
-            pcl::PointCloud<pcl::PointXYZI>::Ptr source = cloud;
             Eigen::Matrix4d T_source = pose.cast<double>();
             Eigen::Matrix4d T_target = _keyframes[loop_index].second.second;
-            pcl::PointCloud<pcl::PointXYZI>::Ptr target = _keyframes[loop_index].first;
+            pcl::PointCloud<pcl::PointXYZI>::Ptr target(new pcl::PointCloud<pcl::PointXYZI>);
+            pcl::copyPointCloud(*_keyframes[loop_index].first, *target);
             _m_iNdt.setInputTarget(target);
             _m_iNdt.setInputSource(cloud);
             _m_icp.setInputTarget(target);
@@ -684,9 +689,10 @@ void Mapping::map()
 
             //_m_iNdt.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
             _m_icp.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
-            //Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
+            // Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
             Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
             *out_loop += *target;
+            *cloud += *target;
             std::cout << "out_loop->points.size():" << out_loop->points.size() << std::endl;
             out_loop->height = 1;
             out_loop->width = out_loop->points.size();
@@ -694,8 +700,14 @@ void Mapping::map()
             {
                 pcl::io::savePLYFileBinary("out_loop.ply", *out_loop);
             }
-            LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
-            _loop_index++;
+            cloud->height = 1;
+            cloud->width = out_loop->points.size();
+            if (cloud->points.size() != 0)
+            {
+                pcl::io::savePLYFileBinary("out_loop_ori.ply", *cloud);
+            }
+                LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
+                _loop_index++;
         }
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
@@ -714,11 +726,14 @@ void Mapping::map()
     {
         pcl::io::savePLYFileBinary("out.ply", *out);
     }
+    std::cout << "_keyframes_show.size():" << _keyframes_show.size() << std::endl;
     for (int j = 0; j < _keyframes_show.size(); j++)
     {
         pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe(new pcl::PointCloud<pcl::PointXYZI>);
-        for(auto &p:_keyframes_show[j].first->points){
-            if(p.intensity == 1){
+        for (auto &p : _keyframes_show[j].first->points)
+        {
+            if (p.intensity == 1)
+            {
                 keyframe->points.push_back(p);
             }
         }
@@ -859,6 +874,8 @@ int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
         double distance = calculateDistance(pose, T_keyframe);
         if (distance < _distance_threshold * 0.5 && std::abs(time_stamp * 1e-6 - _keyframes[i].second.first * 1e-6) > 20)
         {
+            std::cout << "pose" << pose << std::endl;
+            std::cout << "T_keyframe" << T_keyframe << std::endl;
             std::cout << "distance:" << distance << std::endl;
             std::cout << "LoopClosure" << std::endl;
             return i;

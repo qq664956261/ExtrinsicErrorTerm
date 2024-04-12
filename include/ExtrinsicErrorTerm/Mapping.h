@@ -89,7 +89,7 @@ protected:
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
     pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
-    double _distance_threshold{0.5};
+    double _distance_threshold{3};
     bool _first_loop{false};
     int _loop_index{0};
 };
