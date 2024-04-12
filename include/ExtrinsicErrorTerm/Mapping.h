@@ -48,6 +48,7 @@ public:
     void map();
     void LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
     int DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
+    bool judgeFeaturesDistribution(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
     typedef std::shared_ptr<Mapping> Ptr;
 
@@ -89,7 +90,7 @@ protected:
     std::vector<std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
     pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
-    double _distance_threshold{3};
+    double _distance_threshold{3};//dis 0.5 detatime 20 dis 3 detatime 40
     bool _first_loop{false};
     int _loop_index{0};
 };

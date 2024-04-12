@@ -657,7 +657,7 @@ void Mapping::map()
         std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> keyframe;
         keyframe.first.reset(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::copyPointCloud(*cloud, *keyframe.first);
-        //keyframe.first = cloud;
+        // keyframe.first = cloud;
         keyframe.second.first = _p_cloud_pose[i].second.first;
         keyframe.second.second = pose.cast<double>();
         if (closest_d > 0.7 * _distance_threshold)
@@ -669,7 +669,10 @@ void Mapping::map()
 
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
-        int loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
+        
+        int loop_index = -2;
+        if(judgeFeaturesDistribution(cloud))
+            loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
         // if (loop_index > -1 && !_first_loop)
         if (loop_index > -1)
         {
@@ -706,8 +709,8 @@ void Mapping::map()
             {
                 pcl::io::savePLYFileBinary("out_loop_ori.ply", *cloud);
             }
-                LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
-                _loop_index++;
+            LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
+            _loop_index++;
         }
     }
     pcl::PointCloud<pcl::PointXYZI>::Ptr out(new pcl::PointCloud<pcl::PointXYZI>);
@@ -882,4 +885,29 @@ int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
         }
     }
     return -1;
+}
+bool Mapping::judgeFeaturesDistribution(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
+{
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_judge(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::copyPointCloud(*cloud, *cloud_judge);
+    Eigen::Matrix<double, 4, -1> neighbors(4, cloud_judge->points.size());
+    for (int i = 0; i < cloud_judge->points.size(); i++)
+    {
+        neighbors.col(i) = cloud->at(i).getVector4fMap().template cast<double>();
+    }
+    neighbors.colwise() -= neighbors.rowwise().mean().eval();
+    Eigen::Matrix4d cov = neighbors * neighbors.transpose() / cloud_judge->points.size();
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(cov.block<3, 3>(0, 0), Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Vector3d values;
+    values = svd.singularValues();
+    std::cout<<"values:"<<values<<std::endl;
+    if(values[0]/values[1] < 100)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+ 
 }
