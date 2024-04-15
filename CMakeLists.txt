@@ -6,7 +6,7 @@ project(ExtrinsicErrorTerm
   )
 
 # 使用现代 C++（C++ 11及以上）
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 if(UNIX)
   add_compile_options(-fPIC)
 endif()
@@ -16,7 +16,7 @@ find_package(Boost REQUIRED COMPONENTS
         timer
         filesystem)
 #PCL
-find_package(PCL REQUIRED)
+#find_package(PCL REQUIRED)
 
 find_package(OpenCV REQUIRED)
 
@@ -24,56 +24,32 @@ find_package(Eigen3 REQUIRED)
 
 find_package( Ceres REQUIRED )
 
-find_package( Sophus REQUIRED )
 
 # 头文件目录
 include_directories(
   include
   ${PCL_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
+  #${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
-  ${Sophus_INCLUDE_DIRS}
  
   )
 
 
 
-add_executable(${PROJECT_NAME}
-  test.cpp
-  src/ExtrinsicErrorTerm.cpp
- )
 
- add_executable("mapOptimization"
-  test_MapOptimization.cpp
-  src/MapOptimization.cpp
- )
  add_executable("mapping"
  test_Mapping.cpp
  src/Mapping.cpp
 )
 target_link_libraries("mapping"
-${PCL_LIBRARIES}
+#${PCL_LIBRARIES}
 ${OpenCV_LIBRARIES}
 ${Boost_LIBRARIES}
 ${CERES_LIBRARIES}
-${Sophus_LIBRARIES}
 )
- target_link_libraries("mapOptimization"
-        ${PCL_LIBRARIES}
-        ${OpenCV_LIBRARIES}
-        ${Boost_LIBRARIES}
-        ${CERES_LIBRARIES}
-        ${Sophus_LIBRARIES}
-)
-target_link_libraries(${PROJECT_NAME}
-        ${PCL_LIBRARIES}
-        ${OpenCV_LIBRARIES}
-        ${Boost_LIBRARIES}
-        ${CERES_LIBRARIES}
-        ${Sophus_LIBRARIES}
-)
+
 
 
 
