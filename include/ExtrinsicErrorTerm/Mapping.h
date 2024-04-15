@@ -22,6 +22,7 @@
 // #include <pcl/registration/ndt.h>
 // #include <pcl/registration/icp.h>
 #include "ExtrinsicErrorTerm/pointType.h"
+#include "ExtrinsicErrorTerm/icp_3d.h"
 enum SonarIndex
 {
     left_front = 0,
@@ -91,7 +92,7 @@ protected:
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     // pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
     // pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
-    double _distance_threshold{3};//dis 0.5 detatime 20 dis 3 detatime 40
+    double _distance_threshold{0.5};//dis 0.5 detatime 20 dis 3 detatime 40
     bool _first_loop{false};
     int _loop_index{0};
 };

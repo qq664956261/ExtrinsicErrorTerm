@@ -6,7 +6,7 @@ project(ExtrinsicErrorTerm
   )
 
 # 使用现代 C++（C++ 11及以上）
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 if(UNIX)
   add_compile_options(-fPIC)
 endif()
@@ -33,6 +33,7 @@ include_directories(
   #${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
+  ${PROJECT_SOURCE_DIR}/thirdparty/sophus
  
   )
 
@@ -42,6 +43,8 @@ include_directories(
  add_executable("mapping"
  test_Mapping.cpp
  src/Mapping.cpp
+ src/kdtree.cpp
+ src/icp_3d.cpp
 )
 target_link_libraries("mapping"
 #${PCL_LIBRARIES}

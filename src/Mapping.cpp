@@ -583,7 +583,7 @@ void Mapping::clusterPoses(double maxDistance)
         for (size_t j = i + 1; j < _p_sonarindex_pose.size(); ++j)
         {
             if (!clustered[j] && calculateDistance(_p_sonarindex_pose[i].second, _p_sonarindex_pose[j].second) <= maxDistance &&
-                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 40)
+                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 20)
             {
                 temp_pair.first = _p_sonarindex_pose[j].first;
                 temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
@@ -668,9 +668,9 @@ void Mapping::map()
 
         std::cout << "pose:" << pose << std::endl;
         std::cout << "T:" << T << std::endl;
-        
+
         int loop_index = -2;
-        if(judgeFeaturesDistribution(cloud))
+        if (judgeFeaturesDistribution(cloud))
             loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
         // if (loop_index > -1 && !_first_loop)
         if (loop_index > -1)
@@ -685,6 +685,18 @@ void Mapping::map()
             // _m_iNdt.setInputSource(cloud);
             // _m_icp.setInputTarget(target);
             // _m_icp.setInputSource(cloud);
+            sad::Icp3d icp;
+            icp.SetSource(cloud);
+            icp.SetTarget(target);
+            SE3 pose;
+            // Eigen::Matrix4d T_init = T_target.inverse() * T_source;
+            Eigen::Matrix4d T_init;
+            T_init.setIdentity();
+            Eigen::Quaterniond q_init(T_init.block<3, 3>(0, 0));
+            Eigen::Vector3d t_init(T_init.block<3, 1>(0, 3));
+            pose = SE3(Quatd(q_init.w(), q_init.x(), q_init.y(), q_init.z()), Vec3d(t_init.x(), t_init.y(), t_init.z()));
+            bool success;
+            success = icp.AlignP2Line(pose);
             mypcl::PointCloud<mypcl::PointXYZI>::Ptr out_loop(new mypcl::PointCloud<mypcl::PointXYZI>());
             std::cout << "cloud->points.size():" << cloud->points.size() << std::endl;
             std::cout << "target->points.size():" << target->points.size() << std::endl;
@@ -692,8 +704,8 @@ void Mapping::map()
             //_m_iNdt.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
             //_m_icp.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
             // Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
-            //Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
-            Eigen::Matrix4f result_loop;
+            // Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
+            Eigen::Matrix4f result_loop  = pose.matrix().cast<float>();
             *out_loop += *target;
             *cloud += *target;
             std::cout << "out_loop->points.size():" << out_loop->points.size() << std::endl;
@@ -904,8 +916,8 @@ bool Mapping::judgeFeaturesDistribution(mypcl::PointCloud<mypcl::PointXYZI>::Ptr
     Eigen::JacobiSVD<Eigen::Matrix3d> svd(cov.block<3, 3>(0, 0), Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Vector3d values;
     values = svd.singularValues();
-    std::cout<<"values:"<<values<<std::endl;
-    if(values[0]/values[1] < 100)
+    std::cout << "values:" << values << std::endl;
+    if (values[0] / values[1] < 100)
     {
         return true;
     }
@@ -913,5 +925,4 @@ bool Mapping::judgeFeaturesDistribution(mypcl::PointCloud<mypcl::PointXYZI>::Ptr
     {
         return false;
     }
- 
 }

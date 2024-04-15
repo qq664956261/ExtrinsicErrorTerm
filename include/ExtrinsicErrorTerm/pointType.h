@@ -40,6 +40,15 @@ namespace mypcl
             points.insert(points.end(), other.points.begin(), other.points.end());
             return *this; // 返回当前对象的引用，以支持链式调用
         }
+
+        bool empty() const
+        {
+            return points.empty();
+        }
+        int size() const
+        {
+            return points.size();
+        }
     };
     template <typename PointT>
     // 深拷贝函数
@@ -72,6 +81,7 @@ namespace mypcl
             << "property float x\n"
             << "property float y\n"
             << "property float z\n"
+            << "property float intensity\n"
             << "end_header\n";
 
         // 写入点数据
