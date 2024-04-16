@@ -63,6 +63,13 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "any": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "csignal": "cpp",
+        "codecvt": "cpp",
+        "unordered_set": "cpp",
+        "future": "cpp",
+        "valarray": "cpp",
+        "*.inc": "cpp",
+        "shared_mutex": "cpp"
     }
 }

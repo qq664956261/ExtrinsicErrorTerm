@@ -1,6 +1,3 @@
-//
-// Created by xiang on 2022/7/7.
-//
 
 #include "ExtrinsicErrorTerm/icp_3d.h"
 #include "ExtrinsicErrorTerm/common/math_utils.h"
@@ -269,7 +266,7 @@ bool Icp3d::AlignP2Line(SE3& init_pose) {
                     return;
                 }
 
-                Vec3d err = SO3::hat(d) * (qs - p0);
+                Vec3d err = SO3::hat(d) * (qs - p0);// 计算点到直线的距离
 
                 if (err.norm() > options_.max_line_distance_) {
                     // 点离的太远了不要

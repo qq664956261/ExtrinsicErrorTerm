@@ -1,9 +1,7 @@
-//
-// Created by xiang on 2021/9/22.
-//
 
-#ifndef SLAM_IN_AUTO_DRIVING_KDTREE_H
-#define SLAM_IN_AUTO_DRIVING_KDTREE_H
+
+#ifndef KDTREE_H
+#define KDTREE_H
 
 #include "ExtrinsicErrorTerm/common/eigen_types.h"
 #include "ExtrinsicErrorTerm/common/point_types.h"
@@ -116,6 +114,8 @@ class KdTree {
     bool NeedExpand(const Vec3f& pt, KdTreeNode* node, std::priority_queue<NodeAndDistance>& knn_result) const;
 
     int k_ = 5;                                   // knn最近邻数量
+    // root_作为树的入口，用std::shared_ptr管理KD树的生命周期和内存，
+    // 而nodes_则提供了一个快速访问和操作树中任意节点的方式
     std::shared_ptr<KdTreeNode> root_ = nullptr;  // 根节点
     std::vector<Vec3f> cloud_;                    // 输入点云
     std::unordered_map<int, KdTreeNode*> nodes_;  // for bookkeeping
@@ -130,4 +130,4 @@ class KdTree {
 
 }  // namespace sad
 
-#endif  // SLAM_IN_AUTO_DRIVING_KDTREE_H
+#endif  // KDTREE_H

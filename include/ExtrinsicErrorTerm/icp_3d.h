@@ -1,9 +1,6 @@
-//
-// Created by xiang on 2022/7/7.
-//
 
-#ifndef SLAM_IN_AUTO_DRIVING_ICP_3D_H
-#define SLAM_IN_AUTO_DRIVING_ICP_3D_H
+#ifndef ICP_3D_H
+#define ICP_3D_H
 
 #include "ExtrinsicErrorTerm/kdtree.h"
 
@@ -16,7 +13,7 @@ namespace sad {
  * ICP 求解R,t 将source点云配准到target点云上
  * 如果 p 是source点云中的点，那么R*p+t就得到target中的配对点
  *
- * 使用第5章的Kd树来求取最近邻
+ * 本类实现了点到点，点到线，点到面的ICP
  */
 class Icp3d {
    public:
@@ -88,4 +85,4 @@ class Icp3d {
 
 }  // namespace sad
 
-#endif  // SLAM_IN_AUTO_DRIVING_ICP_3D_H
+#endif  //ICP_3D_H

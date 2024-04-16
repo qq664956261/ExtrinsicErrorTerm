@@ -685,7 +685,12 @@ void Mapping::map()
             // _m_iNdt.setInputSource(cloud);
             // _m_icp.setInputTarget(target);
             // _m_icp.setInputSource(cloud);
-            sad::Icp3d icp;
+            sad::Icp3d::Options options;
+            options.max_iteration_ = 100;
+            options.min_effective_pts_ = 100;
+            options.eps_ = 1e-4;
+            //sad::Icp3d icp;
+            sad::Icp3d icp(options);
             icp.SetSource(cloud);
             icp.SetTarget(target);
             SE3 pose;
