@@ -23,6 +23,19 @@
 // #include <pcl/registration/icp.h>
 #include "ExtrinsicErrorTerm/pointType.h"
 #include "ExtrinsicErrorTerm/icp_3d.h"
+
+#include <g2o/core/base_binary_edge.h>
+#include <g2o/core/base_unary_edge.h>
+#include <g2o/core/base_vertex.h>
+#include <g2o/core/robust_kernel.h>
+#include "g2o/core/robust_kernel_impl.h"
+#include <g2o/core/block_solver.h>
+#include <g2o/core/optimization_algorithm_levenberg.h>
+#include <g2o/core/robust_kernel.h>
+#include <g2o/solvers/eigen/linear_solver_eigen.h>
+#include "g2o/solvers/dense/linear_solver_dense.h"
+#include <g2o/types/slam3d/vertex_se3.h>
+#include "ExtrinsicErrorTerm/g2oFacto.h"
 enum SonarIndex
 {
     left_front = 0,
@@ -95,6 +108,7 @@ protected:
     double _distance_threshold{0.5};//dis 0.5 detatime 20 dis 3 detatime 40
     bool _first_loop{false};
     int _loop_index{0};
+    bool _use_ceres{false};
 };
 
 #endif

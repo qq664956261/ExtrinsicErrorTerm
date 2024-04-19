@@ -24,17 +24,18 @@ find_package(Eigen3 REQUIRED)
 
 find_package( Ceres REQUIRED )
 
+find_package(g2o REQUIRED)
 
 # 头文件目录
 include_directories(
   include
   ${PCL_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
-  #${OpenCV_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/thirdparty/sophus
- 
+  ${g2o_INCLUDE_DIRS}
   )
 
 
@@ -51,6 +52,8 @@ target_link_libraries("mapping"
 ${OpenCV_LIBRARIES}
 ${Boost_LIBRARIES}
 ${CERES_LIBRARIES}
+"/usr/local/lib/libg2o_core.so"
+g2o_core g2o_stuff g2o_types_slam3d
 )
 
 

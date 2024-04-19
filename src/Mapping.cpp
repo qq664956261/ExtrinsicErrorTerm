@@ -689,7 +689,7 @@ void Mapping::map()
             options.max_iteration_ = 100;
             options.min_effective_pts_ = 100;
             options.eps_ = 1e-4;
-            //sad::Icp3d icp;
+            // sad::Icp3d icp;
             sad::Icp3d icp(options);
             icp.SetSource(cloud);
             icp.SetTarget(target);
@@ -710,7 +710,7 @@ void Mapping::map()
             //_m_icp.align(*out_loop, (T_target.inverse() * T_source).cast<float>());
             // Eigen::Matrix4f result_loop = _m_iNdt.getFinalTransformation();
             // Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
-            Eigen::Matrix4f result_loop  = pose.matrix().cast<float>();
+            Eigen::Matrix4f result_loop = pose.matrix().cast<float>();
             *out_loop += *target;
             *cloud += *target;
             std::cout << "out_loop->points.size():" << out_loop->points.size() << std::endl;
@@ -772,116 +772,243 @@ void Mapping::map()
 
 void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
-
-    double para_t[_keyframes_show.size()][3];
-    double para_q[_keyframes_show.size()][4];
-    for (int i = 0; i < _keyframes_show.size(); i++)
+    if (_use_ceres)
     {
-        para_t[i][0] = _keyframes_show[i].second.second(0, 3);
-        para_t[i][1] = _keyframes_show[i].second.second(1, 3);
-        para_t[i][2] = _keyframes_show[i].second.second(2, 3);
-        Eigen::Matrix3d temp_R = _keyframes_show[i].second.second.block<3, 3>(0, 0);
-        Eigen::Quaterniond temp_q(temp_R);
+        double para_t[_keyframes_show.size()][3];
+        double para_q[_keyframes_show.size()][4];
+        for (int i = 0; i < _keyframes_show.size(); i++)
+        {
+            para_t[i][0] = _keyframes_show[i].second.second(0, 3);
+            para_t[i][1] = _keyframes_show[i].second.second(1, 3);
+            para_t[i][2] = _keyframes_show[i].second.second(2, 3);
+            Eigen::Matrix3d temp_R = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q(temp_R);
 
-        para_q[i][0] = temp_q.x();
-        para_q[i][1] = temp_q.y();
-        para_q[i][2] = temp_q.z();
-        para_q[i][3] = temp_q.w();
-    }
+            para_q[i][0] = temp_q.x();
+            para_q[i][1] = temp_q.y();
+            para_q[i][2] = temp_q.z();
+            para_q[i][3] = temp_q.w();
+        }
 
-    ceres::Problem problem;
-    ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
+        ceres::Problem problem;
+        ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
 
-    for (int i = 0; i < _keyframes_show.size(); i++)
-    {
+        for (int i = 0; i < _keyframes_show.size(); i++)
+        {
 
-        problem.AddParameterBlock(para_q[i], 4, local_parameterization);
-        problem.AddParameterBlock(para_t[i], 3);
-    }
+            problem.AddParameterBlock(para_q[i], 4, local_parameterization);
+            problem.AddParameterBlock(para_t[i], 3);
+        }
 
-    for (int i = 0; i < _keyframes_show.size() - 1; i++)
-    {
-        Eigen::Vector3d para_t_constraint;
-        Eigen::Vector4f para_q_constraint;
-        Eigen::Matrix3d temp_R2 = _keyframes_show[i + 1].second.second.block<3, 3>(0, 0);
-        Eigen::Quaterniond temp_q_2(temp_R2);
-        Eigen::Vector3d temp_t_2(_keyframes_show[i + 1].second.second(0, 3), _keyframes_show[i + 1].second.second(1, 3), _keyframes_show[i + 1].second.second(2, 3));
-        Eigen::Matrix3d temp_R1 = _keyframes_show[i].second.second.block<3, 3>(0, 0);
-        Eigen::Quaterniond temp_q_1(temp_R1);
-        Eigen::Vector3d temp_t_1(_keyframes_show[i].second.second(0, 3), _keyframes_show[i].second.second(1, 3), _keyframes_show[i].second.second(2, 3));
+        for (int i = 0; i < _keyframes_show.size() - 1; i++)
+        {
+            Eigen::Vector3d para_t_constraint;
+            Eigen::Vector4f para_q_constraint;
+            Eigen::Matrix3d temp_R2 = _keyframes_show[i + 1].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_2(temp_R2);
+            Eigen::Vector3d temp_t_2(_keyframes_show[i + 1].second.second(0, 3), _keyframes_show[i + 1].second.second(1, 3), _keyframes_show[i + 1].second.second(2, 3));
+            Eigen::Matrix3d temp_R1 = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_1(temp_R1);
+            Eigen::Vector3d temp_t_1(_keyframes_show[i].second.second(0, 3), _keyframes_show[i].second.second(1, 3), _keyframes_show[i].second.second(2, 3));
 
-        Eigen::Matrix3d R_constraint;
-        Eigen::Vector3d t_constraint;
+            Eigen::Matrix3d R_constraint;
+            Eigen::Vector3d t_constraint;
 
-        R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
-        t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
+            R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
+            t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
 
-        Eigen::Quaterniond q_constraint(R_constraint);
+            Eigen::Quaterniond q_constraint(R_constraint);
 
-        para_t_constraint = t_constraint;
-        para_q_constraint[0] = q_constraint.x();
-        para_q_constraint[1] = q_constraint.y();
-        para_q_constraint[2] = q_constraint.z();
-        para_q_constraint[3] = q_constraint.w();
-        ceres::CostFunction *cost_function = consecutivePose::Create(
-            para_q_constraint,
-            para_t_constraint);
-        problem.AddResidualBlock(cost_function, NULL, para_q[i], para_t[i], para_q[i + 1], para_t[i + 1]);
-    }
+            para_t_constraint = t_constraint;
+            para_q_constraint[0] = q_constraint.x();
+            para_q_constraint[1] = q_constraint.y();
+            para_q_constraint[2] = q_constraint.z();
+            para_q_constraint[3] = q_constraint.w();
+            ceres::CostFunction *cost_function = consecutivePose::Create(
+                para_q_constraint,
+                para_t_constraint);
+            problem.AddResidualBlock(cost_function, NULL, para_q[i], para_t[i], para_q[i + 1], para_t[i + 1]);
+        }
 
-    Eigen::Vector3d para_t_loop;
-    Eigen::Vector4f para_q_loop;
-    Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
-    Eigen::Quaterniond loop_q_2(loop_R2);
-    Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
-    Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
-    Eigen::Quaterniond loop_q_1(loop_R1);
-    Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
+        Eigen::Vector3d para_t_loop;
+        Eigen::Vector4f para_q_loop;
+        Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_2(loop_R2);
+        Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
+        Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_1(loop_R1);
+        Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
 
-    Eigen::Matrix3d R_constraint_loop;
-    Eigen::Vector3d t_constraint_loop;
+        Eigen::Matrix3d R_constraint_loop;
+        Eigen::Vector3d t_constraint_loop;
 
-    R_constraint_loop = loop_q_2.toRotationMatrix().inverse() * loop_q_1.toRotationMatrix();
-    t_constraint_loop = loop_q_2.toRotationMatrix().inverse() * (loop_t_1 - loop_t_2);
+        R_constraint_loop = loop_q_2.toRotationMatrix().inverse() * loop_q_1.toRotationMatrix();
+        t_constraint_loop = loop_q_2.toRotationMatrix().inverse() * (loop_t_1 - loop_t_2);
 
-    Eigen::Quaterniond q_constraint_loop(R_constraint_loop);
+        Eigen::Quaterniond q_constraint_loop(R_constraint_loop);
 
-    para_t_loop = t_constraint_loop;
-    para_q_loop[0] = q_constraint_loop.x();
-    para_q_loop[1] = q_constraint_loop.y();
-    para_q_loop[2] = q_constraint_loop.z();
-    para_q_loop[3] = q_constraint_loop.w();
-    ceres::CostFunction *cost_function = loopPose::Create(
-        para_q_loop,
-        para_t_loop);
-    problem.AddResidualBlock(cost_function, NULL, para_q[index1], para_t[index1], para_q[index2], para_t[index2]);
-    problem.SetParameterBlockConstant(para_q[index1]);
-    problem.SetParameterBlockConstant(para_t[index1]);
+        para_t_loop = t_constraint_loop;
+        para_q_loop[0] = q_constraint_loop.x();
+        para_q_loop[1] = q_constraint_loop.y();
+        para_q_loop[2] = q_constraint_loop.z();
+        para_q_loop[3] = q_constraint_loop.w();
+        ceres::CostFunction *cost_function = loopPose::Create(
+            para_q_loop,
+            para_t_loop);
+        problem.AddResidualBlock(cost_function, NULL, para_q[index1], para_t[index1], para_q[index2], para_t[index2]);
+        problem.SetParameterBlockConstant(para_q[index1]);
+        problem.SetParameterBlockConstant(para_t[index1]);
 
-    ceres::Solver::Options options;
-    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-    options.num_threads = 20;
-    options.minimizer_progress_to_stdout = true;
-    options.max_solver_time_in_seconds = 600;
-    options.max_num_iterations = 1000;
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+        options.num_threads = 20;
+        options.minimizer_progress_to_stdout = true;
+        options.max_solver_time_in_seconds = 600;
+        options.max_num_iterations = 1000;
 
-    ceres::Solver::Summary summary;
-    ceres::Solve(options, &problem, &summary);
-    if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
-    {
-        std::cout << " converge:" << summary.final_cost << std::endl;
+        ceres::Solver::Summary summary;
+        ceres::Solve(options, &problem, &summary);
+        if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+        {
+            std::cout << " converge:" << summary.final_cost << std::endl;
+        }
+        else
+        {
+            std::cout << " not converge :" << summary.final_cost << std::endl;
+        }
+        for (int i = 0; i < _keyframes_show.size(); i++)
+        {
+            Eigen::Matrix3d R;
+            Eigen::Quaterniond q(para_q[i][3], para_q[i][0], para_q[i][1], para_q[i][2]);
+            R = q.toRotationMatrix();
+            _keyframes_show[i].second.second.block<3, 3>(0, 0) = R;
+            _keyframes_show[i].second.second.block<3, 1>(0, 3) = Eigen::Vector3d(para_t[i][0], para_t[i][1], para_t[i][2]);
+        }
     }
     else
     {
-        std::cout << " not converge :" << summary.final_cost << std::endl;
-    }
-    for (int i = 0; i < _keyframes_show.size(); i++)
-    {
-        Eigen::Matrix3d R;
-        Eigen::Quaterniond q(para_q[i][3], para_q[i][0], para_q[i][1], para_q[i][2]);
-        R = q.toRotationMatrix();
-        _keyframes_show[i].second.second.block<3, 3>(0, 0) = R;
-        _keyframes_show[i].second.second.block<3, 1>(0, 3) = Eigen::Vector3d(para_t[i][0], para_t[i][1], para_t[i][2]);
+        g2o::SparseOptimizer optimizer;
+        optimizer.setVerbose(false);
+
+        // variable-size block solver
+        g2o::OptimizationAlgorithmLevenberg *solver =
+            new g2o::OptimizationAlgorithmLevenberg(g2o::make_unique<g2o::BlockSolverX>(
+                g2o::make_unique<
+                    g2o::LinearSolverDense<g2o::BlockSolverX::PoseMatrixType>>()));
+
+        optimizer.setAlgorithm(solver);
+        // set up two poses
+        int vertex_id = 0;
+        for (int i = 0; i < _keyframes_show.size(); i++)
+        {
+            // set up rotation and translation for this node
+            Eigen::Vector3d t(_keyframes_show[i].second.second(0, 3), _keyframes_show[i].second.second(1, 3), _keyframes_show[i].second.second(2, 3));
+            Eigen::Matrix3d temp_R = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond q(temp_R);
+
+            Eigen::Isometry3d cam; // camera pose
+            cam = q;
+            cam.translation() = t;
+            Sophus::SE3 SE3_T(q, t);
+
+            // set up node
+            VertexPose *vc = new VertexPose();
+            vc->setEstimate(SE3_T);
+            std::cout << "i:" << i << std::endl;
+            std::cout << "vertex_id：" << vertex_id << std::endl;
+
+            vc->setId(vertex_id); // vertex id
+
+            // set first cam pose fixed
+            if (i == 0)
+                vc->setFixed(true);
+
+            // add to optimizer
+            optimizer.addVertex(vc);
+
+            vertex_id++;
+        }
+        std::cout << "66666666666666666666666" << std::endl;
+        std::cout << "optimizer.vertices().size():" << optimizer.vertices().size() << std::endl;
+        for (int i = 0; i < _keyframes_show.size() - 1; i++)
+        {
+            std::cout << "i:" << i << std::endl;
+            Eigen::Vector3d para_t_constraint;
+            Eigen::Vector4f para_q_constraint;
+            Eigen::Matrix3d temp_R2 = _keyframes_show[i + 1].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_2(temp_R2);
+            Eigen::Vector3d temp_t_2(_keyframes_show[i + 1].second.second(0, 3), _keyframes_show[i + 1].second.second(1, 3), _keyframes_show[i + 1].second.second(2, 3));
+            Eigen::Matrix3d temp_R1 = _keyframes_show[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_1(temp_R1);
+            Eigen::Vector3d temp_t_1(_keyframes_show[i].second.second(0, 3), _keyframes_show[i].second.second(1, 3), _keyframes_show[i].second.second(2, 3));
+
+            Eigen::Matrix3d R_constraint;
+            Eigen::Vector3d t_constraint;
+
+            R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
+            t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
+
+            Eigen::Quaterniond q_constraint(R_constraint);
+            Sophus::SE3 se3_1(temp_q_1, temp_t_1);
+            Sophus::SE3 se3_2(temp_q_2, temp_t_2);
+            Sophus::SE3 se3_constraint(q_constraint, t_constraint);
+            se3_constraint = se3_2.inverse() * se3_1;
+            // Sophus::SE3 SE3_constraint(q_constraint, t_constraint);
+            EdgeRelativeMotion *e // new edge with correct cohort for caching
+                = new EdgeRelativeMotion();
+            VertexPose *vp0 =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i)->second);
+            VertexPose *vp1 =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i + 1)->second);
+            e->setVertex(0, vp0); // first viewpoint
+            e->setVertex(1, vp1); // second viewpoint
+            e->setMeasurement(se3_constraint);
+            e->information() = 100 * Eigen::Matrix<double, 6, 6>::Identity();
+
+            // use this for point-point
+            //    e->information().setIdentity();
+
+            // e->setRobustKernel(true);
+            // e->setHuberWidth(0.01);
+
+            optimizer.addEdge(e);
+        }
+        Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_2(loop_R2);
+        Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
+        Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_1(loop_R1);
+        Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
+        Sophus::SE3 se3_loop1(loop_q_1, loop_t_1);
+        Sophus::SE3 se3_loop2(loop_q_2, loop_t_2);
+        Sophus::SE3 se3_loop = se3_loop2.inverse() * se3_loop1;
+        EdgeRelativeMotion *e // new edge with correct cohort for caching
+            = new EdgeRelativeMotion();
+        VertexPose *vp0 =
+            dynamic_cast<VertexPose *>(optimizer.vertices().find(index1)->second);
+        VertexPose *vp1 =
+            dynamic_cast<VertexPose *>(optimizer.vertices().find(index2)->second);
+        vp0->setFixed(true);
+        e->setMeasurement(se3_loop);
+        e->setVertex(0, vp0); // first viewpoint
+        e->setVertex(1, vp1); // second viewpoint
+        e->information() = 1000 * Eigen::Matrix<double, 6, 6>::Identity();
+        optimizer.addEdge(e);
+        optimizer.initializeOptimization();
+        optimizer.computeActiveErrors();
+
+        optimizer.setVerbose(true);
+
+        optimizer.optimize(25);
+        for (int i = 0; i < _keyframes_show.size(); i++)
+        {
+            VertexPose *vc =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i)->second);
+            Sophus::SE3 pose = vc->estimate();
+
+            _keyframes_show[i].second.second.block<3, 3>(0, 0) = pose.unit_quaternion().toRotationMatrix();
+            _keyframes_show[i].second.second.block<3, 1>(0, 3) = pose.translation();
+        }
     }
 }
 int Mapping::DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp)
