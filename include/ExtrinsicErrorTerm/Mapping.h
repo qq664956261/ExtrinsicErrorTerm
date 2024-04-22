@@ -59,9 +59,12 @@ public:
     void buildMultiFrame();
     double calculateDistance(const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
     void clusterPoses(double maxDistance);
+    void clusterPosesOri(double maxDistance = 0.0);
     void multiFrameCombined();
+    void multiFrameCombinedOri();
     void map();
     void LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
+    void LoopClosureOriPose(const double time1, const double time2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2);
     int DetectLoopClosure(const Eigen::Matrix4d &pose, double &time_stamp);
     bool judgeFeaturesDistribution(mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud);
 
@@ -100,15 +103,18 @@ protected:
     std::vector<std::pair<int, int>> _p_sonarindedx_poseindex;
     std::vector<std::pair<int, Eigen::Matrix4d>> _p_sonarindex_pose;
     std::vector<std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>>> _clustered_poses;
+    std::vector<std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>>> _clustered_poses_ori;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _p_cloud_pose;
+    std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _p_cloud_pose_ori;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     // pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
     // pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
-    double _distance_threshold{0.5};//dis 0.5 detatime 20 dis 3 detatime 40
+    double _distance_threshold{1};//dis 0.5 detatime 20 dis 3 detatime 40
     bool _first_loop{false};
     int _loop_index{0};
-    bool _use_ceres{false};
+    bool _use_ceres{true};
+    bool _use_ori_time_pose{true};
 };
 
 #endif

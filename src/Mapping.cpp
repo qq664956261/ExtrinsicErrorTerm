@@ -415,6 +415,7 @@ void Mapping::buildMultiFrame()
     bool first_pose = false;
     Eigen::Matrix4d first_T;
     clusterPoses(_distance_threshold);
+    clusterPosesOri();
 
     if (_clustered_poses.size() > 1)
     {
@@ -448,6 +449,7 @@ void Mapping::buildMultiFrame()
     // std::cout << "num_cluster:" << num_cluster << std::endl;
     std::cout << "multiFrameCombined" << std::endl;
     multiFrameCombined();
+    multiFrameCombinedOri();
 }
 void Mapping::multiFrameCombined()
 {
@@ -506,7 +508,9 @@ void Mapping::multiFrameCombined()
         //     pcl::io::savePLYFileBinary(std::to_string(i) + ".ply", *cloud);
         // }
         std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> p_cloud_time_pose;
-        p_cloud_time_pose.first = cloud;
+        // p_cloud_time_pose.first = cloud;
+        p_cloud_time_pose.first.reset(new mypcl::PointCloud<mypcl::PointXYZI>);
+        mypcl::copyPointCloud(*cloud, *p_cloud_time_pose.first);
         p_cloud_time_pose.second.first = _clustered_poses[i][0].second.first;
         p_cloud_time_pose.second.second = _clustered_poses[i][0].second.second;
         _p_cloud_pose.push_back(p_cloud_time_pose);
@@ -555,6 +559,72 @@ void Mapping::multiFrameCombined()
     _p_cloud_pose = p_cloud_pose_new;
 }
 
+void Mapping::multiFrameCombinedOri()
+{
+
+    for (int i = 0; i < _clustered_poses_ori.size(); i++)
+    {
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &cluster = _clustered_poses_ori[i];
+        mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud(new mypcl::PointCloud<mypcl::PointXYZI>);
+        for (int j = 0; j < cluster.size(); j++)
+        {
+            int index = cluster[j].first;
+            Eigen::Matrix4d T_wc = cluster[j].second.second;
+
+            float fov_rad = 0.0, sonar_base_x = 0.0, sonar_base_y = 0.0, sonar_base_yaw = 0.0;
+            float length;
+            fov_rad = _leftFrontFovRad;
+            sonar_base_x = _leftFrontX;
+            sonar_base_y = _leftFronty;
+            sonar_base_yaw = _leftFrontyaw;
+            length = _SonarWaveDatas[index][1];
+            float half_fov = fov_rad / 2.0;
+            float theta_rad = 0.0 / 180.0 * M_PI;
+
+            // sonar坐标系的数据
+            float sonar_x, sonar_y, sonar_z;
+            sonar_z = 0.0;
+            sonar_x = length * cos(theta_rad);
+            sonar_y = length * sin(theta_rad);
+            Eigen::Vector4d sonar_p(sonar_x, sonar_y, sonar_z, 1);
+            Eigen::Matrix4d T_base_front;
+            T_base_front.setIdentity();
+            Eigen::Quaterniond q_base_front = Eigen::AngleAxisd(_leftFrontyaw, Eigen::Vector3d::UnitZ()) *
+                                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX());
+            T_base_front.block<3, 3>(0, 0) = q_base_front.toRotationMatrix();
+            T_base_front.block<3, 1>(0, 3) = Eigen::Vector3d(_leftFrontX, _leftFronty, 0);
+
+            Eigen::Matrix4d T_w_base = T_wc;
+            Eigen::Matrix4d T_w_front = T_w_base * T_base_front;
+            Eigen::Quaterniond q_w_front(T_w_front.block<3, 3>(0, 0));
+            Eigen::Vector3d t_w_front(T_w_front.block<3, 1>(0, 3));
+            Eigen::Vector4d p_w_4;
+            Eigen::Vector4d p_0; // 转到第一帧坐标系下
+            p_w_4 = T_w_front * sonar_p;
+            p_0 = _clustered_poses_ori[i][0].second.second.inverse() * p_w_4;
+            mypcl::PointXYZI p;
+            p.x = p_0[0];
+            p.y = p_0[1];
+            p.z = p_0[2];
+            cloud->points.push_back(p);
+        }
+        // cloud->height = 1;
+        // cloud->width = cloud->points.size();
+        // if (cloud->points.size() != 0)
+        // {
+        //     pcl::io::savePLYFileBinary(std::to_string(i) + ".ply", *cloud);
+        // }
+        std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>> p_cloud_time_pose;
+        // p_cloud_time_pose.first = cloud;
+        p_cloud_time_pose.first.reset(new mypcl::PointCloud<mypcl::PointXYZI>);
+        mypcl::copyPointCloud(*cloud, *p_cloud_time_pose.first);
+        p_cloud_time_pose.second.first = _clustered_poses_ori[i][0].second.first;
+        p_cloud_time_pose.second.second = _clustered_poses_ori[i][0].second.second;
+        _p_cloud_pose_ori.push_back(p_cloud_time_pose);
+    }
+}
+
 double Mapping::calculateDistance(const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
     return std::sqrt((pose1(0, 3) - pose2(0, 3)) * (pose1(0, 3) - pose2(0, 3)) +
@@ -583,7 +653,7 @@ void Mapping::clusterPoses(double maxDistance)
         for (size_t j = i + 1; j < _p_sonarindex_pose.size(); ++j)
         {
             if (!clustered[j] && calculateDistance(_p_sonarindex_pose[i].second, _p_sonarindex_pose[j].second) <= maxDistance &&
-                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 20)
+                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 40)
             {
                 temp_pair.first = _p_sonarindex_pose[j].first;
                 temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
@@ -595,7 +665,63 @@ void Mapping::clusterPoses(double maxDistance)
         _clustered_poses.push_back(cluster);
     }
 }
+void Mapping::clusterPosesOri(double maxDistance)
+{
+    std::vector<bool> clustered(_p_sonarindex_pose.size(), false); // 标记位姿是否已经被分到某个簇中
 
+    for (size_t i = 0; i < _p_sonarindex_pose.size(); ++i)
+    {
+        // 跳过已经聚类的位姿
+        if (clustered[i])
+            continue;
+
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> cluster;
+        std::pair<int, std::pair<double, Eigen::Matrix4d>> temp_pair;
+        temp_pair.first = _p_sonarindex_pose[i].first;
+        temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[i].second][0], _p_sonarindex_pose[i].second);
+        cluster.push_back(temp_pair);
+        clustered[i] = true;
+        int timestamp_index = _p_sonarindedx_poseindex[i].second;
+        double timestamp = _Poses[timestamp_index][0] * 1e-6;
+
+        // 对后续位姿进行检查，判断是否与当前位姿是同一簇的一部分
+        for (size_t j = i + 1; j < _p_sonarindex_pose.size(); ++j)
+        {
+            if (!clustered[j] && calculateDistance(_p_sonarindex_pose[i].second, _p_sonarindex_pose[j].second) <= maxDistance &&
+                std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 40)
+            {
+                temp_pair.first = _p_sonarindex_pose[j].first;
+                temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
+                cluster.push_back(temp_pair);
+                clustered[j] = true;
+            }
+        }
+
+        _clustered_poses_ori.push_back(cluster);
+    }
+    std::cout << "_clustered_poses_ori.size():" << _clustered_poses_ori.size() << std::endl;
+    if (_clustered_poses_ori.size() > 1)
+    {
+        double travelDistance = 0.0;
+        std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &lastGroup = _clustered_poses_ori.back();
+
+        // 计算最后一组中位姿依次行走的距离
+        for (size_t i = 1; i < lastGroup.size(); ++i)
+        {
+            travelDistance += calculateDistance(lastGroup[i - 1].second.second, lastGroup[i].second.second);
+        }
+
+        // 如果累计行走的距离小于阈值，则合并至前一组
+        std::cout << "travelDistance:" << travelDistance << std::endl;
+        if (travelDistance < _distance_threshold * 0.7)
+        {
+            std::cout << "travelDistance < distance_threshold * 0.7" << std::endl;
+            std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> &secondLastGroup = _clustered_poses_ori[_clustered_poses_ori.size() - 2];
+            secondLastGroup.insert(secondLastGroup.end(), lastGroup.begin(), lastGroup.end());
+            _clustered_poses_ori.pop_back(); // 移除最后一组
+        }
+    }
+}
 void Mapping::map()
 {
     std::cout << "_p_cloud_pose.size():" << _p_cloud_pose.size() << std::endl;
@@ -670,9 +796,11 @@ void Mapping::map()
         std::cout << "T:" << T << std::endl;
 
         int loop_index = -2;
+        std::cout << "_p_cloud_pose[i].second.first:" << _p_cloud_pose[i].second.first << std::endl;
         if (judgeFeaturesDistribution(cloud))
             loop_index = DetectLoopClosure(pose.cast<double>(), _p_cloud_pose[i].second.first);
         // if (loop_index > -1 && !_first_loop)
+        std::cout << "_p_cloud_pose[i].second.first:" << _p_cloud_pose[i].second.first << std::endl;
         if (loop_index > -1)
         {
             std::cout << "loop_index:" << loop_index << std::endl;
@@ -686,17 +814,17 @@ void Mapping::map()
             // _m_icp.setInputTarget(target);
             // _m_icp.setInputSource(cloud);
             sad::Icp3d::Options options;
-            options.max_iteration_ = 100;
-            options.min_effective_pts_ = 100;
+            options.max_iteration_ = 200;
+            options.min_effective_pts_ = 20;
             options.eps_ = 1e-4;
             // sad::Icp3d icp;
             sad::Icp3d icp(options);
             icp.SetSource(cloud);
             icp.SetTarget(target);
             SE3 pose;
-            // Eigen::Matrix4d T_init = T_target.inverse() * T_source;
-            Eigen::Matrix4d T_init;
-            T_init.setIdentity();
+            Eigen::Matrix4d T_init = T_target.inverse() * T_source;
+            // Eigen::Matrix4d T_init;
+            // T_init.setIdentity();
             Eigen::Quaterniond q_init(T_init.block<3, 3>(0, 0));
             Eigen::Vector3d t_init(T_init.block<3, 1>(0, 3));
             pose = SE3(Quatd(q_init.w(), q_init.x(), q_init.y(), q_init.z()), Vec3d(t_init.x(), t_init.y(), t_init.z()));
@@ -712,6 +840,9 @@ void Mapping::map()
             // Eigen::Matrix4f result_loop = _m_icp.getFinalTransformation();
             Eigen::Matrix4f result_loop = pose.matrix().cast<float>();
             *out_loop += *target;
+            mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud_transform(new mypcl::PointCloud<mypcl::PointXYZI>());
+            mypcl::transformPointCloud(*cloud, *cloud_transform, result_loop.cast<float>());
+            *out_loop += *cloud_transform;
             *cloud += *target;
             std::cout << "out_loop->points.size():" << out_loop->points.size() << std::endl;
             // out_loop->height = 1;
@@ -726,7 +857,11 @@ void Mapping::map()
             {
                 mypcl::savePLYFileBinary("out_loop_ori.ply", *cloud);
             }
-            LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
+            std::cout << "_p_cloud_pose[i].second.first:" << _p_cloud_pose[i].second.first << std::endl;
+            if (!_use_ori_time_pose)
+                LoopClosure(loop_index, _keyframes_show.size() - 1, T_target, T_target * result_loop.cast<double>());
+            else
+                LoopClosureOriPose(_keyframes[loop_index].second.first, _p_cloud_pose[i].second.first, T_target, T_target * result_loop.cast<double>());
             _loop_index++;
         }
     }
@@ -747,20 +882,40 @@ void Mapping::map()
         mypcl::savePLYFileBinary("out.ply", *out);
     }
     std::cout << "_keyframes_show.size():" << _keyframes_show.size() << std::endl;
-    for (int j = 0; j < _keyframes_show.size(); j++)
+    if (!_use_ori_time_pose)
     {
-        mypcl::PointCloud<mypcl::PointXYZI>::Ptr keyframe(new mypcl::PointCloud<mypcl::PointXYZI>);
-        for (auto &p : _keyframes_show[j].first->points)
+        for (int j = 0; j < _keyframes_show.size(); j++)
         {
-            if (p.intensity == 1)
+            mypcl::PointCloud<mypcl::PointXYZI>::Ptr keyframe(new mypcl::PointCloud<mypcl::PointXYZI>);
+            for (auto &p : _keyframes_show[j].first->points)
             {
-                keyframe->points.push_back(p);
+                if (p.intensity == 1)
+                {
+                    keyframe->points.push_back(p);
+                }
             }
+            Eigen::Matrix4d T_keyframe = _keyframes_show[j].second.second;
+            mypcl::PointCloud<mypcl::PointXYZI>::Ptr transformedCloud(new mypcl::PointCloud<mypcl::PointXYZI>);
+            mypcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe.cast<float>());
+            *out_show += *transformedCloud;
         }
-        Eigen::Matrix4d T_keyframe = _keyframes_show[j].second.second;
-        mypcl::PointCloud<mypcl::PointXYZI>::Ptr transformedCloud(new mypcl::PointCloud<mypcl::PointXYZI>);
-        mypcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe.cast<float>());
-        *out_show += *transformedCloud;
+    }
+    else
+    {
+        for(int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+            if(_p_cloud_pose_ori[i].second.first > _keyframes_show.back().second.first)
+            {
+                continue;
+            }
+            mypcl::PointCloud<mypcl::PointXYZI>::Ptr keyframe(new mypcl::PointCloud<mypcl::PointXYZI>);
+            mypcl::copyPointCloud(*_p_cloud_pose_ori[i].first, *keyframe);
+            Eigen::Matrix4d T_keyframe = _p_cloud_pose_ori[i].second.second;
+            mypcl::PointCloud<mypcl::PointXYZI>::Ptr transformedCloud(new mypcl::PointCloud<mypcl::PointXYZI>);
+            mypcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe.cast<float>());
+            *out_show += *transformedCloud;
+        }
+
     }
     // out_show->height = 1;
     // out_show->width = out_show->points.size();
@@ -769,7 +924,265 @@ void Mapping::map()
         mypcl::savePLYFileBinary("out_show.ply", *out_show);
     }
 }
+void Mapping::LoopClosureOriPose(const double time1, const double time2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
+{
+    int index1 = -1;
+    int index2 = -1;
+    std::cout << "time1:" << time1 << std::endl;
+    std::cout << "time2:" << time2 << std::endl;
+    std::cout << "_p_cloud_pose_ori.size():" << _p_cloud_pose_ori.size() << std::endl;
+    for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+    {
+        if (_p_cloud_pose_ori[i].second.first == time1)
+        {
+            index1 = i;
+        }
+        if (_p_cloud_pose_ori[i].second.first == time2)
+        {
+            index2 = i;
+        }
+    }
+    if (_use_ceres)
+    {
+        double para_t[_p_cloud_pose_ori.size()][3];
+        double para_q[_p_cloud_pose_ori.size()][4];
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+            para_t[i][0] = _p_cloud_pose_ori[i].second.second(0, 3);
+            para_t[i][1] = _p_cloud_pose_ori[i].second.second(1, 3);
+            para_t[i][2] = _p_cloud_pose_ori[i].second.second(2, 3);
+            Eigen::Matrix3d temp_R = _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q(temp_R);
 
+            para_q[i][0] = temp_q.x();
+            para_q[i][1] = temp_q.y();
+            para_q[i][2] = temp_q.z();
+            para_q[i][3] = temp_q.w();
+        }
+
+        ceres::Problem problem;
+        ceres::LocalParameterization *local_parameterization = new ceres::EigenQuaternionParameterization();
+
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+
+            problem.AddParameterBlock(para_q[i], 4, local_parameterization);
+            problem.AddParameterBlock(para_t[i], 3);
+        }
+
+        for (int i = 0; i < _p_cloud_pose_ori.size() - 1; i++)
+        {
+            Eigen::Vector3d para_t_constraint;
+            Eigen::Vector4f para_q_constraint;
+            Eigen::Matrix3d temp_R2 = _p_cloud_pose_ori[i + 1].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_2(temp_R2);
+            Eigen::Vector3d temp_t_2(_p_cloud_pose_ori[i + 1].second.second(0, 3), _p_cloud_pose_ori[i + 1].second.second(1, 3), _p_cloud_pose_ori[i + 1].second.second(2, 3));
+            Eigen::Matrix3d temp_R1 = _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_1(temp_R1);
+            Eigen::Vector3d temp_t_1(_p_cloud_pose_ori[i].second.second(0, 3), _p_cloud_pose_ori[i].second.second(1, 3), _p_cloud_pose_ori[i].second.second(2, 3));
+
+            Eigen::Matrix3d R_constraint;
+            Eigen::Vector3d t_constraint;
+
+            R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
+            t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
+
+            Eigen::Quaterniond q_constraint(R_constraint);
+
+            para_t_constraint = t_constraint;
+            para_q_constraint[0] = q_constraint.x();
+            para_q_constraint[1] = q_constraint.y();
+            para_q_constraint[2] = q_constraint.z();
+            para_q_constraint[3] = q_constraint.w();
+            ceres::CostFunction *cost_function = consecutivePose::Create(
+                para_q_constraint,
+                para_t_constraint);
+            problem.AddResidualBlock(cost_function, NULL, para_q[i], para_t[i], para_q[i + 1], para_t[i + 1]);
+        }
+
+        Eigen::Vector3d para_t_loop;
+        Eigen::Vector4f para_q_loop;
+        Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_2(loop_R2);
+        Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
+        Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_1(loop_R1);
+        Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
+
+        Eigen::Matrix3d R_constraint_loop;
+        Eigen::Vector3d t_constraint_loop;
+
+        R_constraint_loop = loop_q_2.toRotationMatrix().inverse() * loop_q_1.toRotationMatrix();
+        t_constraint_loop = loop_q_2.toRotationMatrix().inverse() * (loop_t_1 - loop_t_2);
+
+        Eigen::Quaterniond q_constraint_loop(R_constraint_loop);
+
+        para_t_loop = t_constraint_loop;
+        para_q_loop[0] = q_constraint_loop.x();
+        para_q_loop[1] = q_constraint_loop.y();
+        para_q_loop[2] = q_constraint_loop.z();
+        para_q_loop[3] = q_constraint_loop.w();
+        ceres::CostFunction *cost_function = loopPose::Create(
+            para_q_loop,
+            para_t_loop);
+        problem.AddResidualBlock(cost_function, NULL, para_q[index1], para_t[index1], para_q[index2], para_t[index2]);
+        problem.SetParameterBlockConstant(para_q[index1]);
+        problem.SetParameterBlockConstant(para_t[index1]);
+
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+        options.num_threads = 20;
+        options.minimizer_progress_to_stdout = true;
+        options.max_solver_time_in_seconds = 600;
+        options.max_num_iterations = 1000;
+
+        ceres::Solver::Summary summary;
+        ceres::Solve(options, &problem, &summary);
+        if (summary.termination_type == ceres::CONVERGENCE || summary.final_cost < 1)
+        {
+            std::cout << " converge:" << summary.final_cost << std::endl;
+        }
+        else
+        {
+            std::cout << " not converge :" << summary.final_cost << std::endl;
+        }
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+            Eigen::Matrix3d R;
+            Eigen::Quaterniond q(para_q[i][3], para_q[i][0], para_q[i][1], para_q[i][2]);
+            R = q.toRotationMatrix();
+            _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0) = R;
+            _p_cloud_pose_ori[i].second.second.block<3, 1>(0, 3) = Eigen::Vector3d(para_t[i][0], para_t[i][1], para_t[i][2]);
+        }
+    }
+    else
+    {
+        g2o::SparseOptimizer optimizer;
+        optimizer.setVerbose(false);
+
+        // variable-size block solver
+        g2o::OptimizationAlgorithmLevenberg *solver =
+            new g2o::OptimizationAlgorithmLevenberg(g2o::make_unique<g2o::BlockSolverX>(
+                g2o::make_unique<
+                    g2o::LinearSolverDense<g2o::BlockSolverX::PoseMatrixType>>()));
+
+        optimizer.setAlgorithm(solver);
+        // set up two poses
+        int vertex_id = 0;
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+            // set up rotation and translation for this node
+            Eigen::Vector3d t(_p_cloud_pose_ori[i].second.second(0, 3), _p_cloud_pose_ori[i].second.second(1, 3), _p_cloud_pose_ori[i].second.second(2, 3));
+            Eigen::Matrix3d temp_R = _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond q(temp_R);
+
+            Eigen::Isometry3d cam; // camera pose
+            cam = q;
+            cam.translation() = t;
+            Sophus::SE3 SE3_T(q, t);
+
+            // set up node
+            VertexPose *vc = new VertexPose();
+            vc->setEstimate(SE3_T);
+
+            vc->setId(vertex_id); // vertex id
+
+            // set first cam pose fixed
+            if (i == 0)
+                vc->setFixed(true);
+
+            // add to optimizer
+            optimizer.addVertex(vc);
+
+            vertex_id++;
+        }
+
+        for (int i = 0; i < _p_cloud_pose_ori.size() - 1; i++)
+        {
+            Eigen::Vector3d para_t_constraint;
+            Eigen::Vector4f para_q_constraint;
+            Eigen::Matrix3d temp_R2 = _p_cloud_pose_ori[i + 1].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_2(temp_R2);
+            Eigen::Vector3d temp_t_2(_p_cloud_pose_ori[i + 1].second.second(0, 3), _p_cloud_pose_ori[i + 1].second.second(1, 3), _p_cloud_pose_ori[i + 1].second.second(2, 3));
+            Eigen::Matrix3d temp_R1 = _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0);
+            Eigen::Quaterniond temp_q_1(temp_R1);
+            Eigen::Vector3d temp_t_1(_p_cloud_pose_ori[i].second.second(0, 3), _p_cloud_pose_ori[i].second.second(1, 3), _p_cloud_pose_ori[i].second.second(2, 3));
+
+            Eigen::Matrix3d R_constraint;
+            Eigen::Vector3d t_constraint;
+
+            R_constraint = temp_q_2.toRotationMatrix().inverse() * temp_q_1.toRotationMatrix();
+            t_constraint = temp_q_2.toRotationMatrix().inverse() * (temp_t_1 - temp_t_2);
+
+            Eigen::Quaterniond q_constraint(R_constraint);
+            Sophus::SE3 se3_1(temp_q_1, temp_t_1);
+            Sophus::SE3 se3_2(temp_q_2, temp_t_2);
+            Sophus::SE3 se3_constraint(q_constraint, t_constraint);
+            se3_constraint = se3_2.inverse() * se3_1;
+            // Sophus::SE3 SE3_constraint(q_constraint, t_constraint);
+            EdgeRelativeMotion *e // new edge with correct cohort for caching
+                = new EdgeRelativeMotion();
+            VertexPose *vp0 =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i)->second);
+            VertexPose *vp1 =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i + 1)->second);
+            e->setVertex(0, vp0); // first viewpoint
+            e->setVertex(1, vp1); // second viewpoint
+            e->setMeasurement(se3_constraint);
+            e->information() = 100 * Eigen::Matrix<double, 6, 6>::Identity();
+            // use this for point-point
+            //    e->information().setIdentity();
+
+            // e->setRobustKernel(true);
+            // e->setHuberWidth(0.01);
+
+            optimizer.addEdge(e);
+        }
+        Eigen::Matrix3d loop_R2 = pose2.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_2(loop_R2);
+        Eigen::Vector3d loop_t_2(pose2(0, 3), pose2(1, 3), pose2(2, 3));
+        Eigen::Matrix3d loop_R1 = pose1.block<3, 3>(0, 0);
+        Eigen::Quaterniond loop_q_1(loop_R1);
+        Eigen::Vector3d loop_t_1(pose1(0, 3), pose1(1, 3), pose1(2, 3));
+        Sophus::SE3 se3_loop1(loop_q_1, loop_t_1);
+        Sophus::SE3 se3_loop2(loop_q_2, loop_t_2);
+        Sophus::SE3 se3_loop = se3_loop2.inverse() * se3_loop1;
+        EdgeRelativeMotion *e // new edge with correct cohort for caching
+            = new EdgeRelativeMotion();
+        std::cout << "time1:" << std::to_string(time1) << std::endl;
+        std::cout << "time2:" << std::to_string(time2) << std::endl;
+        std::cout << "index1:" << index1 << std::endl;
+        std::cout << "index2:" << index2 << std::endl;
+        VertexPose *vp0 =
+            dynamic_cast<VertexPose *>(optimizer.vertices().find(index1)->second);
+        VertexPose *vp1 =
+            dynamic_cast<VertexPose *>(optimizer.vertices().find(index2)->second);
+        vp0->setFixed(true);
+        e->setMeasurement(se3_loop);
+        e->setVertex(0, vp0); // first viewpoint
+        e->setVertex(1, vp1); // second viewpoint
+        std::cout << "111" << std::endl;
+        e->information() = 1000 * Eigen::Matrix<double, 6, 6>::Identity();
+        optimizer.addEdge(e);
+        optimizer.initializeOptimization();
+
+        optimizer.computeActiveErrors();
+
+        optimizer.setVerbose(true);
+        std::cout << "222" << std::endl;
+        optimizer.optimize(25);
+        std::cout << "333" << std::endl;
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        {
+            VertexPose *vc =
+                dynamic_cast<VertexPose *>(optimizer.vertices().find(i)->second);
+            Sophus::SE3 pose = vc->estimate();
+
+            _p_cloud_pose_ori[i].second.second.block<3, 3>(0, 0) = pose.unit_quaternion().toRotationMatrix();
+            _p_cloud_pose_ori[i].second.second.block<3, 1>(0, 3) = pose.translation();
+        }
+    }
+}
 void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matrix4d &pose1, const Eigen::Matrix4d &pose2)
 {
     if (_use_ceres)
