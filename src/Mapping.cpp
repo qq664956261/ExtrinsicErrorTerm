@@ -29,7 +29,7 @@ Mapping::~Mapping()
 int Mapping::readPose(const std::string filepath)
 {
     int ret = -1;
-    std::string filenames = filepath + "/ArmyOdom1.txt";
+    std::string filenames = filepath + "/ArmyOdom.txt";
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -64,7 +64,7 @@ int Mapping::readPose(const std::string filepath)
 int Mapping::readSonarWaveData(const std::string filepath)
 {
     int ret = -1;
-    std::string filenames = filepath + "/ArmyUltra1.txt";
+    std::string filenames = filepath + "/ArmyUltra.txt";
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -415,7 +415,8 @@ void Mapping::buildMultiFrame()
     bool first_pose = false;
     Eigen::Matrix4d first_T;
     clusterPoses(_distance_threshold);
-    clusterPosesOri();
+    if (_use_ori_time_pose)
+        clusterPosesOri();
 
     if (_clustered_poses.size() > 1)
     {
@@ -449,7 +450,8 @@ void Mapping::buildMultiFrame()
     // std::cout << "num_cluster:" << num_cluster << std::endl;
     std::cout << "multiFrameCombined" << std::endl;
     multiFrameCombined();
-    multiFrameCombinedOri();
+    if (_use_ori_time_pose)
+        multiFrameCombinedOri();
 }
 void Mapping::multiFrameCombined()
 {
@@ -749,16 +751,32 @@ void Mapping::map()
             mypcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe.cast<float>());
             *localMap += *transformedCloud;
         }
+        // sad::Icp3d::Options options;
+        // options.max_iteration_ = 200;
+        // options.min_effective_pts_ = 20;
+        // options.eps_ = 1e-4;
+        // // sad::Icp3d icp;
+        // sad::Icp3d icp(options);
+        // icp.SetSource(cloud);
+        // icp.SetTarget(localMap);
+        // SE3 pose_init;
+        // Eigen::Matrix4d T_init = T;
+        // Eigen::Quaterniond q_init(T_init.block<3, 3>(0, 0));
+        // Eigen::Vector3d t_init(T_init.block<3, 1>(0, 3));
+        // pose_init = SE3(Quatd(q_init.w(), q_init.x(), q_init.y(), q_init.z()), Vec3d(t_init.x(), t_init.y(), t_init.z()));
+        // bool success;
+        // success = icp.AlignP2Line(pose_init);
 
         // _m_iNdt.setInputTarget(localMap);
         // _m_iNdt.setInputSource(cloud);
         mypcl::PointCloud<mypcl::PointXYZI>::Ptr out(new mypcl::PointCloud<mypcl::PointXYZI>());
         Eigen::Matrix4f pose;
+        // pose = pose_init.matrix().cast<float>();
         pose = T.cast<float>();
 
         // _m_iNdt.align(*out, pose);
         // pose = _m_iNdt.getFinalTransformation();
-        pose = T.cast<float>();
+        // pose = T.cast<float>();
         if (i < _p_cloud_pose.size() - 1)
         {
             Eigen::Matrix4d T_next = _p_cloud_pose[i + 1].second.second;
@@ -902,9 +920,9 @@ void Mapping::map()
     }
     else
     {
-        for(int i = 0; i < _p_cloud_pose_ori.size(); i++)
+        for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
         {
-            if(_p_cloud_pose_ori[i].second.first > _keyframes_show.back().second.first)
+            if (_p_cloud_pose_ori[i].second.first > _keyframes_show.back().second.first)
             {
                 continue;
             }
@@ -915,7 +933,6 @@ void Mapping::map()
             mypcl::transformPointCloud(*keyframe, *transformedCloud, T_keyframe.cast<float>());
             *out_show += *transformedCloud;
         }
-
     }
     // out_show->height = 1;
     // out_show->width = out_show->points.size();
@@ -928,9 +945,9 @@ void Mapping::LoopClosureOriPose(const double time1, const double time2, const E
 {
     int index1 = -1;
     int index2 = -1;
-    std::cout << "time1:" << time1 << std::endl;
-    std::cout << "time2:" << time2 << std::endl;
-    std::cout << "_p_cloud_pose_ori.size():" << _p_cloud_pose_ori.size() << std::endl;
+    // std::cout << "time1:" << time1 << std::endl;
+    // std::cout << "time2:" << time2 << std::endl;
+    // std::cout << "_p_cloud_pose_ori.size():" << _p_cloud_pose_ori.size() << std::endl;
     for (int i = 0; i < _p_cloud_pose_ori.size(); i++)
     {
         if (_p_cloud_pose_ori[i].second.first == time1)
@@ -1212,6 +1229,8 @@ void Mapping::LoopClosure(const int index1, const int index2, const Eigen::Matri
             problem.AddParameterBlock(para_q[i], 4, local_parameterization);
             problem.AddParameterBlock(para_t[i], 3);
         }
+        problem.SetParameterBlockConstant(para_q[0]);
+        problem.SetParameterBlockConstant(para_t[0]);
 
         for (int i = 0; i < _keyframes_show.size() - 1; i++)
         {

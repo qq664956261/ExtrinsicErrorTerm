@@ -110,11 +110,11 @@ protected:
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
     // pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _m_iNdt;
     // pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> _m_icp;
-    double _distance_threshold{1};//dis 0.5 detatime 20 dis 3 detatime 40
+    double _distance_threshold{0.5};//dis 0.5 detatime 20 dis 3 detatime 40
     bool _first_loop{false};
     int _loop_index{0};
-    bool _use_ceres{true};
-    bool _use_ori_time_pose{true};
+    bool _use_ceres{false};
+    bool _use_ori_time_pose{false};
 };
 
 #endif
