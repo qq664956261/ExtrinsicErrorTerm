@@ -56,6 +56,21 @@ ${CERES_LIBRARIES}
 g2o_core g2o_stuff g2o_types_slam3d
 )
 
+add_executable("relocalization"
+test_Relocalization.cpp
+src/Relocalization.cpp
+src/kdtree.cpp
+src/icp_3d.cpp
+src/Scancontext.cpp
+)
+target_link_libraries("relocalization"
+#${PCL_LIBRARIES}
+${OpenCV_LIBRARIES}
+${Boost_LIBRARIES}
+glog
+
+)
+
 
 
 

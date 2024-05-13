@@ -1,3 +1,4 @@
+//create by zhangcheng 2024/05/11
 #ifndef MYPOINTTYPE_H
 #define MYPOINTTYPE_H
 #include <vector>
@@ -7,6 +8,28 @@
 #include <Eigen/Core>
 namespace mypcl
 {
+    struct Voxel
+    {
+        float x = 0, y = 0, z = 0;
+        int count = 0;
+        template <typename PointT>
+        void addVoxelPoint(const PointT &point)
+        {
+            x += point.x;
+            y += point.y;
+            z += point.z;
+            count++;
+        }
+        template <typename PointT>
+        void getAveragePoint( PointT& point) const
+        {
+            point.x = x / count;
+            point.y = y / count;
+            point.z = z / count;
+            point.intensity = 0;
+        }
+    };
+
     struct PointXYZI
     {
         float x, y, z;   // 3D坐标
@@ -139,6 +162,69 @@ namespace mypcl
         }
     }
 
+    template <typename PointT>
+    bool loadPLYFile(const std::string &filename, PointCloud<PointT> &cloud)
+    {
+        std::ifstream ifs(filename);
+        if (!ifs.is_open())
+        {
+            std::cerr << "无法打开文件: " << filename << std::endl;
+            return false;
+        }
+
+        std::string line;
+        bool header_passed = false;
+        while (std::getline(ifs, line))
+        {
+            std::istringstream iss(line);
+            if (line == "end_header")
+            {
+                header_passed = true;
+                continue;
+            }
+
+            if (!header_passed)
+            {
+                // 处理文件头部信息，这里暂时忽略
+                continue;
+            }
+
+            // 解析点数据
+            float x, y, z, intensity;
+            if (!(iss >> x >> y >> z >> intensity))
+                break; // 格式化失败或达到文件末尾
+
+            cloud.addPoint({x, y, z, intensity});
+        }
+
+        return true;
+    }
+
+    template <typename PointT>
+    void voxelGridFilter(const PointCloud<PointT> &input, PointCloud<PointT> &output, float voxelSize)
+    {
+        std::unordered_map<int64_t, Voxel> voxelMap;
+        auto hash = [voxelSize](float x, float y, float z) -> int64_t
+        {
+            return static_cast<int64_t>(std::floor(x / voxelSize)) + static_cast<int64_t>(std::floor(y / voxelSize)) * 10007 + static_cast<int64_t>(std::floor(z / voxelSize)) * 100000007;
+        };
+
+        // 构建体素网格
+        for (const auto &point : input.points)
+        {
+            int64_t idx = hash(point.x, point.y, point.z);
+            voxelMap[idx].addVoxelPoint(point);
+        }
+
+        // 获取每个体素的平均点，并构建输出点云
+        output.points.clear();
+        for (const auto &voxel : voxelMap)
+        {
+            PointT point;
+            voxel.second.getAveragePoint(point);
+            output.addVoxelPoint(point);
+        }
+    }
 }
 
 #endif
