@@ -676,6 +676,12 @@ void Relocalization::reloc()
     auto target = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
     std::cout << "SCclosestHistoryFrameID:" << SCclosestHistoryFrameID << std::endl;
     mypcl::copyPointCloud(*(_p_cloud_pose[SCclosestHistoryFrameID].first), *target);
+    Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    Eigen::AngleAxisd rotation_vector ( detectResult.second, Eigen::Vector3d ( 0,0,1 ) );
+    rotation_matrix = rotation_vector.toRotationMatrix();
+    T.block<3, 3>(0, 0) = rotation_matrix;
+    mypcl::transformPointCloud(*target, *target, T.cast<float>());
     mypcl::savePLYFileBinary("target.ply", *target);
 
 }

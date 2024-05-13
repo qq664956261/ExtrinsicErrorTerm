@@ -85,8 +85,8 @@ public:
 
     // const int    PC_NUM_RING = 20; // 20 in the original paper (IROS 18)
     // const int    PC_NUM_SECTOR = 60; // 60 in the original paper (IROS 18)
-        const int    PC_NUM_RING = 20; // 20 in the original paper (IROS 18)
-    const int    PC_NUM_SECTOR = 180; // 60 in the original paper (IROS 18)
+        const int    PC_NUM_RING = 200; // 20 in the original paper (IROS 18)
+    const int    PC_NUM_SECTOR = 360; // 60 in the original paper (IROS 18)
     // double PC_MAX_RADIUS = 80.0; // 80 meter max in the original paper (IROS 18)
     double PC_MAX_RADIUS = 80; // 80 meter max in the original paper (IROS 18)
     const double PC_UNIT_SECTORANGLE = 360.0 / double(PC_NUM_SECTOR);

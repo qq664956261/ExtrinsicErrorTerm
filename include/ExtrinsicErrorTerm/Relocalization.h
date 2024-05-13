@@ -89,10 +89,10 @@ protected:
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
 
-    double _distance_threshold{0.5};//dis 0.5 detatime 20 dis 3 detatime 40
+    double _distance_threshold{0.02};//dis 0.5 detatime 20 dis 3 detatime 40
     SCManager _scManager;
-    int _combineFrame{10};
-    int _sourceStartIndex{0};
+    int _combineFrame{250};
+    int _sourceStartIndex{10000};
     mypcl::PointCloud<mypcl::PointXYZI>::Ptr _reloc_source;
 
 };

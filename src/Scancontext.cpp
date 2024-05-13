@@ -451,20 +451,26 @@ std::pair<int, float> SCManager::detectLoopClosureID ( void )
      *  step 2: pairwise distance (find optimal columnwise best-fit using cosine distance)
      */
  
-    for( int candidate_iter_idx = 0; candidate_iter_idx < NUM_CANDIDATES_FROM_TREE; candidate_iter_idx++ )
+    // for( int candidate_iter_idx = 0; candidate_iter_idx < NUM_CANDIDATES_FROM_TREE; candidate_iter_idx++ )
+    for( int candidate_iter_idx = 0; candidate_iter_idx < polarcontexts_.size() -1; candidate_iter_idx++ )
     {
-        MatrixXd polarcontext_candidate = polarcontexts_[ candidate_indexes[candidate_iter_idx] ];
+        std::cout<<"candidate_iter_idx:"<<candidate_iter_idx<<std::endl;
+        // MatrixXd polarcontext_candidate = polarcontexts_[ candidate_indexes[candidate_iter_idx] ];
+        MatrixXd polarcontext_candidate = polarcontexts_[ candidate_iter_idx];
+        // std::cout<<"curr_desc:"<<curr_desc<<std::endl;
+        // std::cout<<"polarcontext_candidate:"<<polarcontext_candidate<<std::endl;
         std::pair<double, int> sc_dist_result = distanceBtnScanContext( curr_desc, polarcontext_candidate ); 
         
         double candidate_dist = sc_dist_result.first;
         int candidate_align = sc_dist_result.second;
-
+        std::cout<<"candidate_dist:"<<candidate_dist<<std::endl;
         if( candidate_dist < min_dist )
         {
             min_dist = candidate_dist;
             nn_align = candidate_align;
 
-            nn_idx = candidate_indexes[candidate_iter_idx];
+            // nn_idx = candidate_indexes[candidate_iter_idx];
+            nn_idx = candidate_iter_idx;
         }
     }
     std::cout<<"nn_idx:"<<nn_idx<<std::endl;
@@ -491,6 +497,7 @@ std::pair<int, float> SCManager::detectLoopClosureID ( void )
 
     // To do: return also nn_align (i.e., yaw diff)
     float yaw_diff_rad = deg2rad(nn_align * PC_UNIT_SECTORANGLE);
+    std::cout<<"yaw_diff_rad:"<<yaw_diff_rad<<std::endl;
     std::pair<int, float> result {loop_id, yaw_diff_rad};
 
     return result;
