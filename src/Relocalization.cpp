@@ -9,9 +9,9 @@ Relocalization::~Relocalization()
 {
 }
 
-int Relocalization::readPose(const std::string filepath, std::vector<std::vector<double>>& Poses, std::deque<std::pair<int, double>>& PoseTimeStamp)
+int Relocalization::readPose(const std::string filepath, std::vector<std::vector<double>> &Poses, std::deque<std::pair<int, double>> &PoseTimeStamp)
 {
-    std::cout<<"readPose"<<std::endl;
+    std::cout << "readPose" << std::endl;
     int ret = -1;
     std::string filenames = filepath;
     std::ifstream infile(filenames.c_str());
@@ -49,10 +49,15 @@ void Relocalization::setPoses(std::vector<std::vector<double>> Poses, std::deque
     _Poses = Poses;
     _PoseTimeStamp = PoseTimeStamp;
 }
-
-int Relocalization::readSonarWaveData(const std::string filepath, std::vector<std::vector<double>>& SonarWaveDatas, std::deque<std::pair<int, double>>& SonarWaveTimeStamp)
+void Relocalization::setPosesRelocSource(std::vector<std::vector<double>> Poses, std::deque<std::pair<int, double>> PoseTimeStamp)
 {
-    std::cout<<"readSonarWaveData"<<std::endl;
+    _PosesRelocSource = Poses;
+    _PoseTimeStampRelocSource = PoseTimeStamp;
+}
+
+int Relocalization::readSonarWaveData(const std::string filepath, std::vector<std::vector<double>> &SonarWaveDatas, std::deque<std::pair<int, double>> &SonarWaveTimeStamp)
+{
+    std::cout << "readSonarWaveData" << std::endl;
     int ret = -1;
     std::string filenames = filepath;
     std::ifstream infile(filenames.c_str());
@@ -91,7 +96,11 @@ void Relocalization::setSonarData(std::vector<std::vector<double>> SonarWaveData
 {
     _SonarWaveDatas = SonarWaveDatas;
     _SonarWaveTimeStamp = SonarWaveTimeStamp;
-
+}
+void Relocalization::setSonarDataRelocSource(std::vector<std::vector<double>> SonarWaveDatas, std::deque<std::pair<int, double>> SonarWaveTimeStamp)
+{
+    _SonarWaveDatasRelocSource = SonarWaveDatas;
+    _SonarWaveTimeStampRelocSource = SonarWaveTimeStamp;
 }
 
 int Relocalization::buildMap()
@@ -183,6 +192,63 @@ int Relocalization::timeStampSynchronization(double sonarWaveTimeStamp)
     // }
 
     return _PoseTimeStamp.at(index).first;
+}
+
+int Relocalization::timeStampSynchronizationRelocSource(double sonarWaveTimeStamp)
+{
+    double pose_stamp = _PoseTimeStampRelocSource.front().second * 1e-6;
+    int index = _PoseTimeStampRelocSource.size() - 1;
+    int index_l = 0;
+    int index_r = 0;
+    bool picked = false;
+    bool picked_l = false;
+    bool picked_r = false;
+
+    // 1. pick index
+    for (int i = index; i >= 0; i--)
+    {
+
+        double timestamp = _PoseTimeStampRelocSource.at(i).second * 1e-6;
+        if (timestamp - sonarWaveTimeStamp > 0)
+        {
+            picked_r = true;
+            index_r = i;
+        }
+        if (timestamp - sonarWaveTimeStamp <= 0)
+        {
+            picked_l = true;
+            index_l = i;
+        }
+
+        if (picked_r && picked_l)
+        {
+            if ((_PoseTimeStampRelocSource.at(index_r).second * 1e-6 - sonarWaveTimeStamp) >= (sonarWaveTimeStamp - _PoseTimeStampRelocSource.at(index_l).second * 1e-6))
+            {
+
+                index = index_l;
+                break;
+            }
+            else
+            {
+
+                index = index_r;
+                break;
+            }
+        }
+    }
+    if (index_r && !picked_l)
+        index = index_r;
+
+    // // 排除数据
+    // if (picked_r && picked_l)
+    // {
+    //     for (int i = 0; i <= index; i++)
+    //     {
+    //         _PoseTimeStamp.pop_front();
+    //     }
+    // }
+
+    return _PoseTimeStampRelocSource.at(index).first;
 }
 
 int Relocalization::Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud)
@@ -601,27 +667,43 @@ void Relocalization::clusterPoses(double maxDistance)
 }
 void Relocalization::buildRelocSource()
 {
-    while (_sourceStartIndex > _p_sonarindex_pose.size())
+    for (int i = 0; i < _SonarWaveDatasRelocSource.size(); i++)
+    {
+        std::vector<double> data = _SonarWaveDatasRelocSource[i];
+        double sonarTimeStamp = data[0] * 1e-6;
+        int index = timeStampSynchronizationRelocSource(sonarTimeStamp);
+        Eigen::Matrix4d T_wc = Eigen::Matrix4d::Identity();
+        Eigen::Quaterniond cur_Q_ = Eigen::AngleAxisd(_PosesRelocSource[index][6], Eigen::Vector3d::UnitZ()) *
+                                    Eigen::AngleAxisd(_PosesRelocSource[index][5], Eigen::Vector3d::UnitY()) *
+                                    Eigen::AngleAxisd(_PosesRelocSource[index][4], Eigen::Vector3d::UnitX());
+        cur_Q_.normalize();
+        T_wc.block<3, 3>(0, 0) = cur_Q_.toRotationMatrix();
+        T_wc.block<3, 1>(0, 3) = Eigen::Vector3d(_PosesRelocSource[index][1], _PosesRelocSource[index][2], _PosesRelocSource[index][3]);
+        _p_sonarindedx_poseindex_reloc.push_back(std::pair<int, int>(i, index));
+        _p_sonarindex_pose_reloc.push_back(std::pair<int, Eigen::Matrix4d>(i, T_wc));
+    }
+
+    while (_sourceStartIndex > _p_sonarindex_pose_reloc.size())
     {
         _sourceStartIndex = _sourceStartIndex / 2;
     }
 
     std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>> cluster;
     std::pair<int, std::pair<double, Eigen::Matrix4d>> temp_pair;
-    temp_pair.first = _p_sonarindex_pose[_sourceStartIndex].first;
-    temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[_sourceStartIndex].second][0], _p_sonarindex_pose[_sourceStartIndex].second);
+    temp_pair.first = _p_sonarindex_pose_reloc[_sourceStartIndex].first;
+    temp_pair.second = std::pair<double, Eigen::Matrix4d>(_PosesRelocSource[_p_sonarindedx_poseindex_reloc[_sourceStartIndex].second][0], _p_sonarindex_pose_reloc[_sourceStartIndex].second);
     cluster.push_back(temp_pair);
-    int timestamp_index = _p_sonarindedx_poseindex[_sourceStartIndex].second;
-    double timestamp = _Poses[timestamp_index][0] * 1e-6;
+    int timestamp_index = _p_sonarindedx_poseindex_reloc[_sourceStartIndex].second;
+    double timestamp = _PosesRelocSource[timestamp_index][0] * 1e-6;
 
     // 对后续位姿进行检查，判断是否与当前位姿是同一簇的一部分
-    for (size_t j = _sourceStartIndex + 1; j < _p_sonarindex_pose.size(); ++j)
+    for (size_t j = _sourceStartIndex + 1; j < _p_sonarindex_pose_reloc.size(); ++j)
     {
-        if (calculateDistance(_p_sonarindex_pose[_combineFrame].second, _p_sonarindex_pose[j].second) <= _distance_threshold * _combineFrame &&
-            std::abs(timestamp - _Poses[_p_sonarindedx_poseindex[j].second][0] * 1e-6) <= 40)
+        if (calculateDistance(_p_sonarindex_pose_reloc[_sourceStartIndex].second, _p_sonarindex_pose_reloc[j].second) <= _distance_threshold * _combineFrame &&
+            std::abs(timestamp - _PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0] * 1e-6) <= 40)
         {
-            temp_pair.first = _p_sonarindex_pose[j].first;
-            temp_pair.second = std::pair<double, Eigen::Matrix4d>(_Poses[_p_sonarindedx_poseindex[j].second][0], _p_sonarindex_pose[j].second);
+            temp_pair.first = _p_sonarindex_pose_reloc[j].first;
+            temp_pair.second = std::pair<double, Eigen::Matrix4d>(_PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0], _p_sonarindex_pose_reloc[j].second);
             cluster.push_back(temp_pair);
         }
     }
@@ -637,7 +719,7 @@ void Relocalization::buildRelocSource()
         sonar_base_x = _leftFrontX;
         sonar_base_y = _leftFronty;
         sonar_base_yaw = _leftFrontyaw;
-        length = _SonarWaveDatas[index][1];
+        length = _SonarWaveDatasRelocSource[index][1];
         float half_fov = fov_rad / 2.0;
         float theta_rad = 0.0 / 180.0 * M_PI;
 
@@ -695,13 +777,31 @@ void Relocalization::reloc()
     mypcl::copyPointCloud(*(_p_cloud_pose[SCclosestHistoryFrameID].first), *target);
     Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-    Eigen::AngleAxisd rotation_vector ( detectResult.second, Eigen::Vector3d ( 0,0,1 ) );
+    Eigen::AngleAxisd rotation_vector(detectResult.second, Eigen::Vector3d(0, 0, 1));
     rotation_matrix = rotation_vector.toRotationMatrix();
     T.block<3, 3>(0, 0) = rotation_matrix;
-    //mypcl::transformPointCloud(*target, *target, T.cast<float>());
+    // mypcl::transformPointCloud(*target, *target, T.cast<float>());
     mypcl::savePLYFileBinary("target.ply", *target);
     auto source_tran = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
     mypcl::transformPointCloud(*_reloc_source, *source_tran, T.inverse().cast<float>());
     mypcl::savePLYFileBinary("source_tran.ply", *source_tran);
-
+    sad::Icp3d::Options options;
+    options.max_iteration_ = 200;
+    options.min_effective_pts_ = 20;
+    options.eps_ = 1e-4;
+    sad::Icp3d icp(options);
+    icp.SetSource(source_tran);
+    icp.SetTarget(target);
+    SE3 pose;
+    Eigen::Matrix4d T_init;
+    T_init.setIdentity();
+    Eigen::Quaterniond q_init(T_init.block<3, 3>(0, 0));
+    Eigen::Vector3d t_init(T_init.block<3, 1>(0, 3));
+    pose = SE3(Quatd(q_init.w(), q_init.x(), q_init.y(), q_init.z()), Vec3d(t_init.x(), t_init.y(), t_init.z()));
+    bool success;
+    success = icp.AlignP2Line(pose);
+    Eigen::Matrix4f result_loop = pose.matrix().cast<float>();
+    auto result = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+    mypcl::transformPointCloud(*source_tran, *result, result_loop.cast<float>());
+    mypcl::savePLYFileBinary("result.ply", *result);
 }

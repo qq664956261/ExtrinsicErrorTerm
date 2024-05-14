@@ -15,8 +15,6 @@
 #include "Eigen/Core"
 #include "Eigen/Geometry"
 
-
-
 #include "ExtrinsicErrorTerm/pointType.h"
 #include "ExtrinsicErrorTerm/icp_3d.h"
 #include "ExtrinsicErrorTerm/Scancontext.h"
@@ -34,12 +32,15 @@ public:
 public:
     Relocalization();
     ~Relocalization();
-    int readPose(const std::string filepath, std::vector<std::vector<double>>& Poses, std::deque<std::pair<int, double>>& PoseTimeStamp);
+    int readPose(const std::string filepath, std::vector<std::vector<double>> &Poses, std::deque<std::pair<int, double>> &PoseTimeStamp);
     void setPoses(std::vector<std::vector<double>> Poses, std::deque<std::pair<int, double>> PoseTimeStamp);
-    int readSonarWaveData(const std::string filepath, std::vector<std::vector<double>>& SonarWaveDatas, std::deque<std::pair<int, double>>& SonarWaveTimeStamp);
+    void setPosesRelocSource(std::vector<std::vector<double>> Poses, std::deque<std::pair<int, double>> PoseTimeStamp);
+    int readSonarWaveData(const std::string filepath, std::vector<std::vector<double>> &SonarWaveDatas, std::deque<std::pair<int, double>> &SonarWaveTimeStamp);
     void setSonarData(std::vector<std::vector<double>> SonarWaveDatas, std::deque<std::pair<int, double>> SonarWaveTimeStamp);
+    void setSonarDataRelocSource(std::vector<std::vector<double>> SonarWaveDatas, std::deque<std::pair<int, double>> SonarWaveTimeStamp);
     int buildMap();
     int timeStampSynchronization(double sonarWaveTimeStamp);
+    int timeStampSynchronizationRelocSource(double sonarWaveTimeStamp);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud, Eigen::Matrix3d R12, Eigen::Vector3d t12);
     void buildMultiFrame();
@@ -49,17 +50,20 @@ public:
     void buildRelocSource();
     void reloc();
 
-
     typedef std::shared_ptr<Relocalization> Ptr;
 
 protected:
     std::vector<std::vector<double>> _Poses;
+    std::vector<std::vector<double>> _PosesRelocSource;
     std::vector<std::vector<double>> _OptimizedPoses;
     std::vector<int> _optimizedPoseIndex;
     std::vector<std::vector<double>> _SonarWaveDatas;
+    std::vector<std::vector<double>> _SonarWaveDatasRelocSource;
     std::vector<std::vector<double>> _SonarWaveOptimizedDatas;
     std::deque<std::pair<int, double>> _PoseTimeStamp;
+    std::deque<std::pair<int, double>> _PoseTimeStampRelocSource;
     std::deque<std::pair<int, double>> _SonarWaveTimeStamp;
+    std::deque<std::pair<int, double>> _SonarWaveTimeStampRelocSource;
     double _leftFrontFovRad{15};
     double _leftFrontX{0.156}; // sonar1坐标系相对base_link坐标系的x外参
     double _leftFronty{0.148}; // sonar1坐标系相对base_link坐标系的y外参
@@ -83,7 +87,9 @@ protected:
     bool _useLineConstraints{false};
     double _firstLapEndTime;
     std::vector<std::pair<int, int>> _p_sonarindedx_poseindex;
+    std::vector<std::pair<int, int>> _p_sonarindedx_poseindex_reloc;
     std::vector<std::pair<int, Eigen::Matrix4d>> _p_sonarindex_pose;
+    std::vector<std::pair<int, Eigen::Matrix4d>> _p_sonarindex_pose_reloc;
     std::vector<std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>>> _clustered_poses;
     std::vector<std::vector<std::pair<int, std::pair<double, Eigen::Matrix4d>>>> _clustered_poses_ori;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _p_cloud_pose;
@@ -91,12 +97,11 @@ protected:
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes;
     std::vector<std::pair<mypcl::PointCloud<mypcl::PointXYZI>::Ptr, std::pair<double, Eigen::Matrix4d>>> _keyframes_show;
 
-    double _distance_threshold{0.02};//dis 0.5 detatime 20 dis 3 detatime 40
+    double _distance_threshold{0.02}; // dis 0.5 detatime 20 dis 3 detatime 40
     SCManager _scManager;
-    int _combineFrame{250};
-    int _sourceStartIndex{10000};
+    int _combineFrame{500};
+    int _sourceStartIndex{0};
     mypcl::PointCloud<mypcl::PointXYZI>::Ptr _reloc_source;
-
 };
 
 #endif

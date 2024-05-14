@@ -12,6 +12,16 @@ int main()
     std::deque<std::pair<int, double>> SonarWaveTimeStamp;
     pRelocalization->readSonarWaveData("./ArmyUltra.txt", SonarWaveDatas, SonarWaveTimeStamp);
     pRelocalization->setSonarData(SonarWaveDatas, SonarWaveTimeStamp);
+
+    std::vector<std::vector<double>> PosesRelocSource;
+    std::deque<std::pair<int, double>> PoseTimeStampRelocSource;
+    pRelocalization->readPose("./zhOdom.txt", PosesRelocSource, PoseTimeStampRelocSource);
+    pRelocalization->setPosesRelocSource(PosesRelocSource, PoseTimeStampRelocSource);
+    std::vector<std::vector<double>> SonarWaveDatasRelocSource;
+    std::deque<std::pair<int, double>> SonarWaveTimeStampRelocSource;
+    pRelocalization->readSonarWaveData("./zhUltra.txt", SonarWaveDatasRelocSource, SonarWaveTimeStampRelocSource);
+    pRelocalization->setSonarDataRelocSource(SonarWaveDatasRelocSource, SonarWaveTimeStampRelocSource);
+
     pRelocalization->buildMultiFrame();
     pRelocalization->reloc();
 
