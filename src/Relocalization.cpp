@@ -9,10 +9,11 @@ Relocalization::~Relocalization()
 {
 }
 
-int Relocalization::readPose(const std::string filepath)
+int Relocalization::readPose(const std::string filepath, std::vector<std::vector<double>>& Poses, std::deque<std::pair<int, double>>& PoseTimeStamp)
 {
+    std::cout<<"readPose"<<std::endl;
     int ret = -1;
-    std::string filenames = filepath + "/ArmyOdom.txt";
+    std::string filenames = filepath;
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -35,19 +36,25 @@ int Relocalization::readPose(const std::string filepath)
         }
         // if (_Poses.size() > 1000)
         //     continue;
-        _Poses.push_back(data);
+        Poses.push_back(data);
         std::pair<int, double> tmp_pair;
-        tmp_pair.first = _Poses.size() - 1;
+        tmp_pair.first = Poses.size() - 1;
         tmp_pair.second = data[0];
-        _PoseTimeStamp.push_back(tmp_pair);
+        PoseTimeStamp.push_back(tmp_pair);
     }
     return ret;
 }
-
-int Relocalization::readSonarWaveData(const std::string filepath)
+void Relocalization::setPoses(std::vector<std::vector<double>> Poses, std::deque<std::pair<int, double>> PoseTimeStamp)
 {
+    _Poses = Poses;
+    _PoseTimeStamp = PoseTimeStamp;
+}
+
+int Relocalization::readSonarWaveData(const std::string filepath, std::vector<std::vector<double>>& SonarWaveDatas, std::deque<std::pair<int, double>>& SonarWaveTimeStamp)
+{
+    std::cout<<"readSonarWaveData"<<std::endl;
     int ret = -1;
-    std::string filenames = filepath + "/ArmyUltra.txt";
+    std::string filenames = filepath;
     std::ifstream infile(filenames.c_str());
     int count = 0;
     for (std::string line; std::getline(infile, line);)
@@ -70,13 +77,21 @@ int Relocalization::readSonarWaveData(const std::string filepath)
         }
         // if (_SonarWaveDatas.size() > 1000)
         //     continue;
-        _SonarWaveDatas.push_back(data);
+        SonarWaveDatas.push_back(data);
         std::pair<int, double> tmp_pair;
-        tmp_pair.first = _SonarWaveDatas.size() - 1;
+        tmp_pair.first = SonarWaveDatas.size() - 1;
         tmp_pair.second = data[0];
-        _SonarWaveTimeStamp.push_back(tmp_pair);
+        SonarWaveTimeStamp.push_back(tmp_pair);
     }
+
     return ret;
+}
+
+void Relocalization::setSonarData(std::vector<std::vector<double>> SonarWaveDatas, std::deque<std::pair<int, double>> SonarWaveTimeStamp)
+{
+    _SonarWaveDatas = SonarWaveDatas;
+    _SonarWaveTimeStamp = SonarWaveTimeStamp;
+
 }
 
 int Relocalization::buildMap()
@@ -166,6 +181,7 @@ int Relocalization::timeStampSynchronization(double sonarWaveTimeStamp)
     //         _PoseTimeStamp.pop_front();
     //     }
     // }
+
     return _PoseTimeStamp.at(index).first;
 }
 
@@ -379,6 +395,7 @@ int Relocalization::Sonar2cloud(SonarIndex index, int indexSonar, int indexPose,
 }
 void Relocalization::buildMultiFrame()
 {
+    std::cout << "buildMultiFrame" << std::endl;
     for (int i = 0; i < _SonarWaveDatas.size(); i++)
     {
         std::vector<double> data = _SonarWaveDatas[i];
@@ -394,7 +411,7 @@ void Relocalization::buildMultiFrame()
         _p_sonarindedx_poseindex.push_back(std::pair<int, int>(i, index));
         _p_sonarindex_pose.push_back(std::pair<int, Eigen::Matrix4d>(i, T_wc));
     }
-
+    std::cout << "_p_sonarindedx_poseindex.size():" << _p_sonarindedx_poseindex.size() << std::endl;
     bool first_pose = false;
     Eigen::Matrix4d first_T;
     clusterPoses(_distance_threshold);
@@ -681,7 +698,10 @@ void Relocalization::reloc()
     Eigen::AngleAxisd rotation_vector ( detectResult.second, Eigen::Vector3d ( 0,0,1 ) );
     rotation_matrix = rotation_vector.toRotationMatrix();
     T.block<3, 3>(0, 0) = rotation_matrix;
-    mypcl::transformPointCloud(*target, *target, T.cast<float>());
+    //mypcl::transformPointCloud(*target, *target, T.cast<float>());
     mypcl::savePLYFileBinary("target.ply", *target);
+    auto source_tran = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+    mypcl::transformPointCloud(*_reloc_source, *source_tran, T.inverse().cast<float>());
+    mypcl::savePLYFileBinary("source_tran.ply", *source_tran);
 
 }

@@ -34,8 +34,10 @@ public:
 public:
     Relocalization();
     ~Relocalization();
-    int readPose(const std::string filepath);
-    int readSonarWaveData(const std::string filepath);
+    int readPose(const std::string filepath, std::vector<std::vector<double>>& Poses, std::deque<std::pair<int, double>>& PoseTimeStamp);
+    void setPoses(std::vector<std::vector<double>> Poses, std::deque<std::pair<int, double>> PoseTimeStamp);
+    int readSonarWaveData(const std::string filepath, std::vector<std::vector<double>>& SonarWaveDatas, std::deque<std::pair<int, double>>& SonarWaveTimeStamp);
+    void setSonarData(std::vector<std::vector<double>> SonarWaveDatas, std::deque<std::pair<int, double>> SonarWaveTimeStamp);
     int buildMap();
     int timeStampSynchronization(double sonarWaveTimeStamp);
     int Sonar2cloud(SonarIndex index, int indexSonar, int indexPose, mypcl::PointCloud<mypcl::PointXYZI>::Ptr cloud);
