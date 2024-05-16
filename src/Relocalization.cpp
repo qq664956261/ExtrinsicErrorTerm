@@ -697,10 +697,15 @@ void Relocalization::buildRelocSource()
     double timestamp = _PosesRelocSource[timestamp_index][0] * 1e-6;
 
     // 对后续位姿进行检查，判断是否与当前位姿是同一簇的一部分
+    double sum_distance = 0;
     for (size_t j = _sourceStartIndex + 1; j < _p_sonarindex_pose_reloc.size(); ++j)
     {
-        if (calculateDistance(_p_sonarindex_pose_reloc[_sourceStartIndex].second, _p_sonarindex_pose_reloc[j].second) <= _distance_threshold * _combineFrame &&
-            std::abs(timestamp - _PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0] * 1e-6) <= 40)
+        double distance = calculateDistance(_p_sonarindex_pose_reloc[j-1].second, _p_sonarindex_pose_reloc[j].second);
+        sum_distance += distance;
+        // if (calculateDistance(_p_sonarindex_pose_reloc[_sourceStartIndex].second, _p_sonarindex_pose_reloc[j].second) <= _distance_threshold * _combineFrame &&
+        //     std::abs(timestamp - _PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0] * 1e-6) <= 40)
+        if(sum_distance<=5)
+        
         {
             temp_pair.first = _p_sonarindex_pose_reloc[j].first;
             temp_pair.second = std::pair<double, Eigen::Matrix4d>(_PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0], _p_sonarindex_pose_reloc[j].second);
@@ -786,7 +791,7 @@ void Relocalization::reloc()
     mypcl::transformPointCloud(*_reloc_source, *source_tran, T.inverse().cast<float>());
     mypcl::savePLYFileBinary("source_tran.ply", *source_tran);
     sad::Icp3d::Options options;
-    options.max_iteration_ = 200;
+    options.max_iteration_ = 20;
     options.min_effective_pts_ = 20;
     options.eps_ = 1e-4;
     sad::Icp3d icp(options);
