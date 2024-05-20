@@ -49,6 +49,11 @@ public:
     void multiFrameCombined();
     void buildRelocSource();
     void reloc();
+    std::vector<mypcl::PointCloud<mypcl::PointXYZI>::Ptr> segmentPointCloudIntoPtrs(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud, size_t segmentSize);
+    double computeCurvature(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud);
+    Eigen::Vector3d polynomialFit(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud);
+    double computeCurvature(double a, double b, double x);
+    Eigen::Vector3d ransacPolynomialFit(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud, int iterations, double threshold);
 
     typedef std::shared_ptr<Relocalization> Ptr;
 

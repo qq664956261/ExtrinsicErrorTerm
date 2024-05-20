@@ -222,7 +222,7 @@ namespace mypcl
         {
             PointT point;
             voxel.second.getAveragePoint(point);
-            output.addVoxelPoint(point);
+            output.addPoint(point);
         }
     }
 }

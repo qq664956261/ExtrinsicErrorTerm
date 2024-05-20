@@ -618,7 +618,7 @@ void Relocalization::multiFrameCombined()
 
         if (combined_cloud->points.size() != 0)
         {
-            mypcl::savePLYFileBinary(std::to_string(i) + ".ply", *combined_cloud);
+            // mypcl::savePLYFileBinary(std::to_string(i) + ".ply", *combined_cloud);
         }
     }
 
@@ -700,12 +700,12 @@ void Relocalization::buildRelocSource()
     double sum_distance = 0;
     for (size_t j = _sourceStartIndex + 1; j < _p_sonarindex_pose_reloc.size(); ++j)
     {
-        double distance = calculateDistance(_p_sonarindex_pose_reloc[j-1].second, _p_sonarindex_pose_reloc[j].second);
+        double distance = calculateDistance(_p_sonarindex_pose_reloc[j - 1].second, _p_sonarindex_pose_reloc[j].second);
         sum_distance += distance;
         // if (calculateDistance(_p_sonarindex_pose_reloc[_sourceStartIndex].second, _p_sonarindex_pose_reloc[j].second) <= _distance_threshold * _combineFrame &&
         //     std::abs(timestamp - _PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0] * 1e-6) <= 40)
-        if(sum_distance<=5)
-        
+        if (sum_distance <= 5)
+
         {
             temp_pair.first = _p_sonarindex_pose_reloc[j].first;
             temp_pair.second = std::pair<double, Eigen::Matrix4d>(_PosesRelocSource[_p_sonarindedx_poseindex_reloc[j].second][0], _p_sonarindex_pose_reloc[j].second);
@@ -809,4 +809,261 @@ void Relocalization::reloc()
     auto result = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
     mypcl::transformPointCloud(*source_tran, *result, result_loop.cast<float>());
     mypcl::savePLYFileBinary("result.ply", *result);
+
+    auto result_filter = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+    std::cout << "result->points.size():" << result->points.size() << std::endl;
+    mypcl::voxelGridFilter(*result, *result_filter, 0.05);
+    std::cout << "result_filter->points.size():" << result_filter->points.size() << std::endl;
+    auto target_filter = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+    std::cout << "target->points.size():" << target->points.size() << std::endl;
+    mypcl::voxelGridFilter(*target, *target_filter, 0.05);
+    std::cout << "target_filter->points.size():" << target_filter->points.size() << std::endl;
+    mypcl::savePLYFileBinary("result_filter.ply", *result_filter);
+    mypcl::savePLYFileBinary("target_filter.ply", *target_filter);
+
+    std::vector<mypcl::PointCloud<mypcl::PointXYZI>::Ptr> segments;
+
+    segments = segmentPointCloudIntoPtrs(result_filter, 10);
+    std::cout << "segments.size():" << segments.size() << std::endl;
+
+    auto result_filter_sample = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+    // for (int i = 0; i < segments.size(); i++)
+    // {
+    //     std::cout<<"segments[i]->points.size():"<<segments[i]->points.size()<<std::endl;
+    //     result_filter_sample->points.push_back(segments[i]->points[0]);
+    // }
+    mypcl::voxelGridFilter(*result_filter, *result_filter_sample, 2);
+    std::cout << "result_filter_sample->points.size():" << result_filter_sample->points.size() << std::endl;
+    mypcl::savePLYFileBinary("result_filter_sample.ply", *result_filter_sample);
+
+    std::shared_ptr<sad::KdTree> kdtree_result = nullptr;
+    kdtree_result = std::make_shared<sad::KdTree>();
+    kdtree_result->BuildTree(result_filter);
+    kdtree_result->SetEnableANN();
+    std::shared_ptr<sad::KdTree> kdtree_target = nullptr;
+    kdtree_target = std::make_shared<sad::KdTree>();
+    kdtree_target->BuildTree(target_filter);
+    kdtree_target->SetEnableANN();
+
+    for (int i = 0; i < result_filter_sample->points.size(); i++)
+    {
+        // std::cout<<"result_filter_sample->points[i].x:"<<result_filter_sample->points[i].x<<std::endl;
+        // std::cout<<"result_filter_sample->points[i].y:"<<result_filter_sample->points[i].y<<std::endl;
+        std::vector<int> nn_result;
+        kdtree_result->GetClosestPoint(result_filter_sample->points[i], nn_result, 50); // 这里取最近邻
+        std::vector<int> nn_target;
+        kdtree_target->GetClosestPoint(result_filter_sample->points[i], nn_target, 50); // 这里取最近邻
+
+        double average_result_x = 0;
+        double average_result_y = 0;
+        for (int j = 0; j < nn_result.size(); j++)
+        {
+            average_result_x += result_filter->points[nn_result[j]].x;
+            average_result_y += result_filter->points[nn_result[j]].y;
+        }
+        average_result_x /= nn_result.size();
+        average_result_y /= nn_result.size();
+        double average_target_x = 0;
+        double average_target_y = 0;
+        for (int j = 0; j < nn_target.size(); j++)
+        {
+            average_target_x += target_filter->points[nn_target[j]].x;
+            average_target_y += target_filter->points[nn_target[j]].y;
+        }
+        average_target_x /= nn_target.size();
+        average_target_y /= nn_target.size();
+
+        // double diff_result_x = result_filter->points[nn_result[0]].x - average_result_x + result_filter->points[nn_result[1]].x - average_result_x +
+        //                 result_filter->points[nn_result[2]].x - average_result_x  + result_filter->points[nn_result[3]].x - average_result_x  +
+        //                 result_filter->points[nn_result[4]].x - average_result_x+ result_filter->points[nn_result[5]].x - average_result_x  +
+        //                 result_filter->points[nn_result[6]].x - average_result_x  + result_filter->points[nn_result[7]].x - average_result_x  +
+        //                 result_filter->points[nn_result[8]].x - average_result_x  + result_filter->points[nn_result[9]].x - average_result_x ;
+        // double diff_result_y = result_filter->points[nn_result[0]].y - average_result_y + result_filter->points[nn_result[1]].y - average_result_y +
+        //                 result_filter->points[nn_result[2]].y - average_result_y + result_filter->points[nn_result[3]].y - average_result_y +
+        //                 result_filter->points[nn_result[4]].y - average_result_y + result_filter->points[nn_result[5]].y - average_result_y +
+        //                 result_filter->points[nn_result[6]].y - average_result_y + result_filter->points[nn_result[7]].y - average_result_y +
+        //                 result_filter->points[nn_result[8]].y - average_result_y + result_filter->points[nn_result[9]].y - average_result_y;
+        // double diff_target_x = target_filter->points[nn_target[0]].x - average_target_x  + target_filter->points[nn_target[1]].x - average_target_x  +
+        //                 target_filter->points[nn_target[2]].x - average_target_x + target_filter->points[nn_target[3]].x - average_target_x +
+        //                 target_filter->points[nn_target[4]].x - average_target_x  + target_filter->points[nn_target[5]].x - average_target_x  +
+        //                 target_filter->points[nn_target[6]].x - average_target_x  + target_filter->points[nn_target[7]].x - average_target_x  +
+        //                 target_filter->points[nn_target[8]].x - average_target_x  + target_filter->points[nn_target[9]].x - average_target_x ;
+        // double diff_target_y = target_filter->points[nn_target[0]].y - average_target_y + target_filter->points[nn_target[1]].y - average_target_y +
+        //                 target_filter->points[nn_target[2]].y - average_target_y + target_filter->points[nn_target[3]].y - average_target_y +
+        //                 target_filter->points[nn_target[4]].y - average_target_y + target_filter->points[nn_target[5]].y - average_target_y +
+        //                 target_filter->points[nn_target[6]].y - average_target_y + target_filter->points[nn_target[7]].y - average_target_y +
+        //                 target_filter->points[nn_target[8]].y - average_target_y + target_filter->points[nn_target[9]].y - average_target_y;
+        double diff_result_x = 0;
+        double diff_result_y = 0;
+        for (int j = 0; j < nn_result.size(); j++)
+        {
+            diff_result_x += result_filter->points[nn_result[j]].x - result_filter->points[nn_result[0]].x ;
+            diff_result_y += result_filter->points[nn_result[j]].y - result_filter->points[nn_result[0]].x ;
+            // std::cout << "diff_result_x:" << diff_result_x << std::endl;
+            // std::cout << "diff_result_y:" << diff_result_y << std::endl;
+        }
+        double diff_target_x = 0;
+        double diff_target_y = 0;
+        for (int j = 0; j < nn_target.size(); j++)
+        {
+            diff_target_x += target_filter->points[nn_target[j]].x - result_filter->points[nn_result[0]].x ;
+            diff_target_y += target_filter->points[nn_target[j]].y - result_filter->points[nn_result[0]].x ;
+            // std::cout << "diff_target_x:" << diff_target_x << std::endl;
+            // std::cout << "diff_target_y:" << diff_target_y << std::endl;
+        }
+
+        double diff_result = diff_result_x * diff_result_x + diff_result_y * diff_result_y;
+        double diff_target = diff_target_x * diff_target_x + diff_target_y * diff_target_y;
+        std::cout << "i:" << i << std::endl;
+        // std::cout << "diff_result:" << diff_result << std::endl;
+        // std::cout << "diff_target:" << diff_target << std::endl;
+        std::cout << "diff:" << diff_result / diff_target << std::endl;
+
+        auto nn_result_cloud = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+        for (int j = 0; j < nn_result.size(); j++)
+        {
+            nn_result_cloud->points.push_back(result_filter->points[nn_result[j]]);
+        }
+        mypcl::savePLYFileBinary("nn_result_cloud" + std::to_string(i) + ".ply", *nn_result_cloud);
+        auto nn_target_cloud = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+        for (int j = 0; j < nn_target.size(); j++)
+        {
+            nn_target_cloud->points.push_back(target_filter->points[nn_target[j]]);
+        }
+        mypcl::savePLYFileBinary("nn_target_cloud" + std::to_string(i) + ".ply", *nn_target_cloud);
+        // Eigen::Vector3d a = ransacPolynomialFit(nn_result_cloud, 100, 0.5);
+        // Eigen::Vector3d b = ransacPolynomialFit(nn_target_cloud, 100, 0.5);
+        // double curvature_result = computeCurvature(a(0), a(1), result_filter_sample->points[i].x);
+        // double curvature_target = computeCurvature(b(0), b(1), result_filter_sample->points[i].x);
+        // // std::cout<<"curvature_result:"<<curvature_result<<std::endl;
+        // // std::cout<<"curvature_target:"<<curvature_target<<std::endl;
+        // std::cout << "curvature_result/curvature_target:" << curvature_result / curvature_target << std::endl;
+    }
+}
+
+std::vector<mypcl::PointCloud<mypcl::PointXYZI>::Ptr> Relocalization::segmentPointCloudIntoPtrs(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud, size_t segmentSize)
+{
+    std::vector<mypcl::PointCloud<mypcl::PointXYZI>::Ptr> segments;
+    int sampleCount = static_cast<int>(pointCloud->points.size() / segmentSize);
+
+    for (size_t i = 0; i < pointCloud->points.size(); i += sampleCount)
+    {
+
+        size_t end = std::min(pointCloud->points.size(), i + sampleCount);
+        auto segment = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+
+        for (size_t j = i; j < end; ++j)
+        {
+            segment->points.push_back(pointCloud->points[j]);
+        }
+        mypcl::savePLYFileBinary("segment" + std::to_string(i) + ".ply", *segment);
+
+        segments.push_back(segment);
+    }
+
+    return segments;
+}
+
+// 基于给定点云拟合一个最佳圆，并计算该圆的曲率
+double Relocalization::computeCurvature(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud)
+{
+    // 此示例省略了输入有效性检查
+    // 创建矩阵和向量并填充
+    Eigen::MatrixXd A(pointCloud->points.size(), 3);
+    Eigen::VectorXd b(pointCloud->points.size());
+
+    for (size_t i = 0; i < pointCloud->points.size(); ++i)
+    {
+        A(i, 0) = pointCloud->points[i].x * 2;
+        A(i, 1) = pointCloud->points[i].y * 2;
+        A(i, 2) = -1.0;
+        b(i) = -(pointCloud->points[i].x * pointCloud->points[i].x + pointCloud->points[i].y * pointCloud->points[i].y);
+    }
+
+    // 求解圆的中心点 a, b 和半径的平方
+    Eigen::Vector3d solution = A.colPivHouseholderQr().solve(b);
+    double centerX = -solution(0);
+    double centerY = -solution(1);
+    double radiusSquared = centerX * centerX + centerY * centerY - solution(2);
+    double radius = std::sqrt(radiusSquared);
+
+    // 曲率的定义为 1/R
+    double curvature = 1.0 / radius;
+    return curvature;
+}
+
+// 为每个点及其邻域进行二次多项式拟合
+// 返回多项式系数：a, b, c
+Eigen::Vector3d Relocalization::polynomialFit(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud)
+{
+    Eigen::MatrixXd A(pointCloud->points.size(), 3);
+    Eigen::VectorXd y(pointCloud->points.size()), x(3);
+
+    for (size_t i = 0; i < pointCloud->points.size(); ++i)
+    {
+        A(i, 0) = pointCloud->points[i].x * pointCloud->points[i].x; // x^2
+        A(i, 1) = pointCloud->points[i].x;                           // x
+        A(i, 2) = 1.0;                                               // constant term
+        y(i) = pointCloud->points[i].y;
+    }
+
+    // Solve Ax = y for x
+    x = A.colPivHouseholderQr().solve(y);
+
+    return x; // x contains the polynomial coefficients [a, b, c]
+}
+
+// 为给定的多项式系数a, b, c和点x计算曲率
+double Relocalization::computeCurvature(double a, double b, double x)
+{
+    double firstDerivative = 2 * a * x + b;
+    double secondDerivative = 2 * a;
+    double curvature = std::fabs(secondDerivative) / std::pow((1 + firstDerivative * firstDerivative), 1.5);
+    return curvature;
+}
+
+// RANSAC 算法实现
+Eigen::Vector3d Relocalization::ransacPolynomialFit(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud, int iterations, double threshold)
+{
+    std::default_random_engine rng;
+    std::uniform_int_distribution<size_t> dist(0, pointCloud->points.size() - 1);
+
+    size_t bestSupport = 0;
+    Eigen::Vector3d bestModel;
+
+    for (int iter = 0; iter < iterations; ++iter)
+    {
+        // 1. 随机选择样本点
+        std::vector<Eigen::Vector2d> samples;
+        auto cloud_sample = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
+        while (cloud_sample->points.size() < 15)
+        {
+            size_t i = dist(rng);
+            cloud_sample->points.push_back(pointCloud->points[i]);
+        }
+
+        // 2. 拟合多项式模型
+        Eigen::Vector3d model = polynomialFit(cloud_sample);
+
+        // 3. 计算所有点对模型的支持度
+        size_t support = 0;
+        for (const auto &point : cloud_sample->points)
+        {
+            double y_est = model[0] * point.x * point.x + model[1] * point.x + model[2];
+            // std::cout << "y_est:" << y_est - point.y << std::endl;
+            if (std::abs(y_est - point.y) < threshold)
+            {
+                support++;
+            }
+        }
+
+        // 4. 更新最佳模型
+        if (support > bestSupport)
+        {
+            bestSupport = support;
+            bestModel = model;
+        }
+    }
+
+    return bestModel;
 }
