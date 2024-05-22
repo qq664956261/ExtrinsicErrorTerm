@@ -844,6 +844,7 @@ void Relocalization::reloc()
     kdtree_target = std::make_shared<sad::KdTree>();
     kdtree_target->BuildTree(target_filter);
     kdtree_target->SetEnableANN();
+    double diff_max = 0;
 
     for (int i = 0; i < result_filter_sample->points.size(); i++)
     {
@@ -897,8 +898,8 @@ void Relocalization::reloc()
         double diff_result_y = 0;
         for (int j = 0; j < nn_result.size(); j++)
         {
-            diff_result_x += result_filter->points[nn_result[j]].x - result_filter->points[nn_result[0]].x ;
-            diff_result_y += result_filter->points[nn_result[j]].y - result_filter->points[nn_result[0]].x ;
+            diff_result_x += result_filter->points[nn_result[j]].x - result_filter->points[nn_result[0]].x;
+            diff_result_y += result_filter->points[nn_result[j]].y - result_filter->points[nn_result[0]].x;
             // std::cout << "diff_result_x:" << diff_result_x << std::endl;
             // std::cout << "diff_result_y:" << diff_result_y << std::endl;
         }
@@ -906,8 +907,8 @@ void Relocalization::reloc()
         double diff_target_y = 0;
         for (int j = 0; j < nn_target.size(); j++)
         {
-            diff_target_x += target_filter->points[nn_target[j]].x - result_filter->points[nn_result[0]].x ;
-            diff_target_y += target_filter->points[nn_target[j]].y - result_filter->points[nn_result[0]].x ;
+            diff_target_x += target_filter->points[nn_target[j]].x - result_filter->points[nn_result[0]].x;
+            diff_target_y += target_filter->points[nn_target[j]].y - result_filter->points[nn_result[0]].x;
             // std::cout << "diff_target_x:" << diff_target_x << std::endl;
             // std::cout << "diff_target_y:" << diff_target_y << std::endl;
         }
@@ -918,6 +919,8 @@ void Relocalization::reloc()
         // std::cout << "diff_result:" << diff_result << std::endl;
         // std::cout << "diff_target:" << diff_target << std::endl;
         std::cout << "diff:" << diff_result / diff_target << std::endl;
+        if (std::fabs(diff_result / diff_target) > diff_max)
+            diff_max = std::fabs(diff_result / diff_target);
 
         auto nn_result_cloud = std::make_shared<mypcl::PointCloud<mypcl::PointXYZI>>();
         for (int j = 0; j < nn_result.size(); j++)
@@ -939,6 +942,10 @@ void Relocalization::reloc()
         // // std::cout<<"curvature_target:"<<curvature_target<<std::endl;
         // std::cout << "curvature_result/curvature_target:" << curvature_result / curvature_target << std::endl;
     }
+    if (std::fabs(diff_max) > 30)
+        std::cout << "loopclosure failed" << std::endl;
+    else
+        std::cout << "loopclosure success" << std::endl;
 }
 
 std::vector<mypcl::PointCloud<mypcl::PointXYZI>::Ptr> Relocalization::segmentPointCloudIntoPtrs(mypcl::PointCloud<mypcl::PointXYZI>::Ptr pointCloud, size_t segmentSize)
